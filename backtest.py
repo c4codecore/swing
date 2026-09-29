@@ -2,32 +2,19 @@
 Walk-Forward Backtesting Engine for Swing Trading System.
 =========================================================
 
-Knowledge & Quantitative Trading Principles:
---------------------------------------------
+Features:
 1. Zero Lookahead Bias (Walk-Forward Design):
-   - Signal generation on day N uses strictly data available up to day N's Close (price_data.iloc[:index + 1]).
+   - Signal generation on day N uses strictly data available up to day N's Close.
    - Actual trade entry occurs on day N+1's Open (9:15 AM IST).
-   - This accurately models real-life trading where an algorithm scans after market close (3:30 PM)
-     and places market/limit orders for the next morning.
-
 2. Realistic Friction & Gap Handling:
-   - Gap-Up / Gap-Down Protection:
-     * If next-day Open >= Target: Gap has already captured the move -> Trade skipped.
-     * If next-day Open <= StopLoss: Gap broke the support invalidating the setup -> Trade skipped.
-   - Dynamic Risk/Reward Check:
-     * If a mild gap-up increases actual risk (Actual_Entry - StopLoss) such that
-       Executable R:R drops below MIN_ACTUAL_RR (1.95), the trade is skipped.
-   - Conservative Intraday Resolution:
-     * If both Target and Stop-Loss are breached within the same daily candle (Low <= Stop and High >= Target),
-       the engine conservatively assumes the Stop-Loss was hit first.
-   - Transaction Costs:
-     * 0.10% round-trip friction applied to every trade (covers STT, brokerage, exchange fees, SEBI, GST, stamp duty).
-
-3. Statistical Confidence & Metrics:
-   - R-Multiple (R): PnL / Actual Initial Rupee Risk. An R of +2.0 means profit was 2x the amount risked.
-   - Expectancy (%): Mathematical average return expected per trade: (Win% * AvgWin%) - (Loss% * AvgLoss%).
-   - Profit Factor: Gross Wins / Gross Losses (PF > 1.5 indicates a robust statistical edge).
-   - Random Baselines: Compares strategy results against random entries to prove the strategy has real edge.
+   - Overnight gaps breaching Stop or Target skip the trade.
+   - Executable RR < 1.95 skips the trade.
+   - 0.10% round-trip friction applied to every trade.
+3. Persistent Cumulative Logging:
+   - Backtest results and trade records are appended with `RunDate` and `RunTime` timestamps.
+4. Integrated Market Regime Analysis:
+   - Automatically runs `regime_split` analysis on completion and appends regime-tagged
+     trades and regime summaries to `outputs/`.
 """
 
 import argparse
@@ -36,12 +23,14 @@ import itertools
 import os
 import pkgutil
 import zlib
+from datetime import datetime
 
 import pandas as pd
 
 import strategies
 from core.ohlcv_data import fetch_price_history, get_nifty50_symbols, get_nifty100_symbols
 from core.market_regime import compute_daily_regime
+from regime_split import tag_trades_with_regime, print_regime_breakdown, compute_regime_summary
 
 
 HISTORY_PERIOD = "3y"
@@ -85,14 +74,7 @@ def discover_strategies():
 
 class RandomEntryBaseline:
     """
-    Deterministic pseudo-random baseline strategy.
-    
-    Knowledge:
-        - In quantitative finance, a strategy is only proven to have an 'Alpha Edge'
-          if it consistently beats a random coin-toss entry with identical ATR stops,
-          2R targets, maximum holding periods, and cost frictions.
-        - If a trend strategy cannot beat Random (Close > SMA200), its entry rules
-          provide no real timing edge over simple market beta.
+    Deterministic pseudo-random baseline strategy to prove trading edge.
     """
 
     def __init__(self, name, uptrend_only, probability=BASELINE_ENTRY_PROBABILITY):
@@ -105,7 +87,6 @@ class RandomEntryBaseline:
             return None
 
         close = float(price_data["Close"].iloc[-1])
-        # Deterministic hash draw based on date + price
         key = f"{price_data.index[-1]}-{close:.2f}"
         draw = zlib.crc32(key.encode()) / 2 ** 32
 
@@ -149,10 +130,7 @@ class RandomEntryBaseline:
 def simulate_trade(price_data, entry_index, stoploss, target):
     """
     Simulates forward price action bar-by-bar starting at day N+1 (entry_index).
-    
-    Returns:
-        (exit_index, exit_price, exit_reason)
-        exit_reasons: 'stop', 'target', 'stop_gap', 'target_gap', 'time_exit'
+    Returns (exit_index, exit_price, exit_reason).
     """
     opens = price_data["Open"].values
     highs = price_data["High"].values
@@ -170,7 +148,6 @@ def simulate_trade(price_data, entry_index, stoploss, target):
 
     for day in range(entry_index, last + 1):
         if day > entry_index:
-            # Check overnight gap openings on subsequent holding days
             if opens[day] <= stoploss:
                 return day, float(opens[day]), "stop_gap"
             if opens[day] >= target:
@@ -185,7 +162,6 @@ def simulate_trade(price_data, entry_index, stoploss, target):
     if last - entry_index + 1 < MAX_HOLD_DAYS:
         return None   # Incomplete holding window at end of dataset
 
-    # Time-based exit (15-day swing time stop)
     return last, float(closes[last]), "time_exit"
 
 
@@ -203,14 +179,13 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
     last_signal_index = len(price_data) - 2
 
     while index <= last_signal_index:
-        # Generate signal strictly with data up to current day's Close
         signal = strategy_module.generate_signal(price_data.iloc[:index + 1])
 
         if not signal:
             index += 1
             continue
 
-        # Market Regime Filter: If strategy requires 'Bullish', skip trades on Bearish/Neutral days
+        # Market Regime Filter: If strategy requires 'Bullish', skip trades on non-matching days
         if required_regime is not None and nifty_regime is not None:
             signal_date = price_data.index[index]
             signal_date_norm = pd.Timestamp(signal_date).normalize()
@@ -289,10 +264,9 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             "RewardPerShare": round(actual_reward, 2),
             "ReturnPct": round(pnl / actual_entry * 100, 2),
             "RMultiple": round(pnl / actual_risk, 2),          # Actual risk based R-multiple
-            "PlannedRMultiple": round(pnl / planned_risk, 2),  # Planned risk based (for comparison)
+            "PlannedRMultiple": round(pnl / planned_risk, 2),  # Planned risk based
         })
 
-        # Avoid overlapping trades on the same stock
         index = max(exit_index, index + 1)
 
     return trades
@@ -415,6 +389,29 @@ def load_price_histories(symbols, period):
     return {k: v for k, v in histories.items() if len(v) > MIN_WARMUP_ROWS + 20}
 
 
+def append_dataframe_to_csv(df, filepath):
+    """
+    Appends a DataFrame to a CSV file safely.
+    If the file exists with the same schema, appends rows.
+    If the existing file has an older schema, concatenates and aligns columns cleanly.
+    """
+    if df is None or df.empty:
+        return
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    if os.path.isfile(filepath):
+        try:
+            existing_df = pd.read_csv(filepath)
+            if list(existing_df.columns) == list(df.columns):
+                df.to_csv(filepath, mode="a", header=False, index=False)
+            else:
+                combined = pd.concat([existing_df, df], ignore_index=True)
+                combined.to_csv(filepath, mode="w", index=False)
+        except Exception:
+            df.to_csv(filepath, mode="a", header=False, index=False)
+    else:
+        df.to_csv(filepath, mode="w", header=True, index=False)
+
+
 # ---------------------------------------------------------------------------
 # CLI Entry Point
 # ---------------------------------------------------------------------------
@@ -460,20 +457,24 @@ def main():
     summaries = []
     trade_frames = []
 
-    # Pre-compute Nifty regime series (used to filter regime-specific strategies)
+    # Timestamp for this backtesting run
+    now = datetime.now()
+    run_date = now.strftime("%Y-%m-%d")
+    run_time = now.strftime("%H:%M:%S")
+
+    # Pre-compute Nifty regime series
     print("\nFetching Nifty regime data ...")
     try:
         nifty_data = fetch_price_history("^NSEI", period="3y")
         nifty_regime = compute_daily_regime(nifty_data) if nifty_data is not None else None
         if nifty_regime is not None:
-            # Normalize index to midnight for clean date matching
             nifty_regime.index = pd.to_datetime(nifty_regime.index).normalize()
             print(f"  Nifty regime series: {len(nifty_regime)} days")
     except Exception as e:
         nifty_regime = None
         print(f"  [!] Could not fetch Nifty regime: {e}")
 
-    # Pre-compute price histories ONCE for all strategies (3y covers all EMA/ATR warmup requirements)
+    # Load price histories ONCE for all strategies
     print(f"\nLoading price data for {len(symbols)} stocks (shared across all strategies) ...")
     histories = load_price_histories(symbols, "3y")
 
@@ -508,38 +509,80 @@ def main():
         print("\nA strategy is only interesting if it clearly beats the 'Baseline' rows")
         print("(especially 'Random (Close > SMA200)') on Expectancy%, AvgR and ProfitFactor.")
 
+    # ---------------------------------------------------------------------------
+    # Persistent Saving (Append with Date & Time)
+    # ---------------------------------------------------------------------------
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
     os.makedirs(output_dir, exist_ok=True)
 
-    summary_df.to_csv(os.path.join(output_dir, "backtest_summary.csv"), index=False)
+    # 1. Summary CSV (Append with RunDate, RunTime)
+    if not summary_df.empty:
+        summary_to_save = summary_df.copy()
+        summary_to_save.insert(0, "RunDate", run_date)
+        summary_to_save.insert(1, "RunTime", run_time)
+        summary_to_save.insert(2, "TestDays", args.days)
+        summary_to_save.insert(3, "Universe", args.universe)
+        append_dataframe_to_csv(summary_to_save, os.path.join(output_dir, "backtest_summary.csv"))
 
     if trade_frames:
         all_trades = pd.concat(trade_frames, ignore_index=True)
-        all_trades.to_csv(os.path.join(output_dir, "backtest_trades.csv"), index=False)
+        all_trades_to_save = all_trades.copy()
+        all_trades_to_save.insert(0, "RunDate", run_date)
+        all_trades_to_save.insert(1, "RunTime", run_time)
+        append_dataframe_to_csv(all_trades_to_save, os.path.join(output_dir, "backtest_trades.csv"))
 
+        # 2. Yearly & Monthly breakdowns (Append with RunDate, RunTime)
         yearly_frames, monthly_frames = [], []
         for name, group in all_trades.groupby("Strategy"):
             yearly = yearly_performance(group)
             if not yearly.empty:
                 yearly.insert(0, "Strategy", name)
+                yearly.insert(0, "RunTime", run_time)
+                yearly.insert(0, "RunDate", run_date)
                 yearly_frames.append(yearly)
             monthly = monthly_performance(group)
             if not monthly.empty:
                 monthly.insert(0, "Strategy", name)
+                monthly.insert(0, "RunTime", run_time)
+                monthly.insert(0, "RunDate", run_date)
                 monthly_frames.append(monthly)
 
         if yearly_frames:
-            pd.concat(yearly_frames, ignore_index=True).to_csv(
-                os.path.join(output_dir, "backtest_yearly.csv"), index=False)
+            append_dataframe_to_csv(pd.concat(yearly_frames, ignore_index=True),
+                                    os.path.join(output_dir, "backtest_yearly.csv"))
         if monthly_frames:
-            pd.concat(monthly_frames, ignore_index=True).to_csv(
-                os.path.join(output_dir, "backtest_monthly.csv"), index=False)
+            append_dataframe_to_csv(pd.concat(monthly_frames, ignore_index=True),
+                                    os.path.join(output_dir, "backtest_monthly.csv"))
 
-    print(f"\nSaved results to {output_dir}")
-    print("  backtest_summary.csv  — per-strategy summary")
-    print("  backtest_trades.csv   — every individual trade")
-    print("  backtest_yearly.csv   — year-by-year breakdown")
-    print("  backtest_monthly.csv  — month-by-month breakdown")
+        # -----------------------------------------------------------------------
+        # 3. Automatic Regime Split Execution
+        # -----------------------------------------------------------------------
+        if nifty_regime is not None:
+            print("\n" + "=" * 70)
+            print("AUTOMATIC MARKET REGIME BREAKDOWN ANALYSIS")
+            print("=" * 70)
+            tagged_trades = tag_trades_with_regime(all_trades, nifty_regime)
+            print_regime_breakdown(tagged_trades)
+
+            tagged_to_save = tagged_trades.copy()
+            tagged_to_save.insert(0, "RunDate", run_date)
+            tagged_to_save.insert(1, "RunTime", run_time)
+            append_dataframe_to_csv(tagged_to_save, os.path.join(output_dir, "backtest_trades_with_regime.csv"))
+
+            regime_summary_df = compute_regime_summary(tagged_trades)
+            if not regime_summary_df.empty:
+                regime_summary_df.insert(0, "RunDate", run_date)
+                regime_summary_df.insert(1, "RunTime", run_time)
+                regime_summary_df.insert(2, "TestDays", args.days)
+                append_dataframe_to_csv(regime_summary_df, os.path.join(output_dir, "backtest_regime_summary.csv"))
+
+    print(f"\nAppended backtest results to {output_dir}:")
+    print("  backtest_summary.csv             — Cumulative per-strategy summaries with timestamps")
+    print("  backtest_trades.csv              — All simulated individual trade logs")
+    print("  backtest_trades_with_regime.csv  — Trades tagged with Bullish/Neutral/Bearish regime")
+    print("  backtest_regime_summary.csv      — Performance breakdown by market regime")
+    print("  backtest_yearly.csv              — Year-by-year performance")
+    print("  backtest_monthly.csv             — Month-by-month performance")
 
 
 if __name__ == "__main__":
