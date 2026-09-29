@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Outputs (generated files — commit karna zaruri nahi)
+outputs/backtest_summary.csv
+outputs/backtest_trades.csv
+outputs/watchlist.csv
+
+# Google Sheets / Drive OAuth & IDs — KABHI COMMIT MAT KARO
+client_secret.json
+outputs/token.json
+outputs/sheet_url.txt
+outputs/gdrive_doc_id.txt
+outputs/gdrive_share_market_basics_url.txt
+
