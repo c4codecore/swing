@@ -130,8 +130,12 @@ def save_watchlist(strategy_key, strategy_module, signals):
         watchlist_df.to_csv(output_path, mode="a", header=not file_exists, index=False)
         print(f"\nAppended to {output_path}")
 
-        # Sync to Google Sheets (non-fatal — local CSV is already safely stored)
-        append_to_sheet(watchlist_df)
+        # Sync to Google Sheets inside Google Drive folder (non-fatal — local CSV is already safely stored)
+        try:
+            from integrations.drive_sync import sync_csv_to_drive_sheet
+            sync_csv_to_drive_sheet(output_path)
+        except Exception:
+            append_to_sheet(watchlist_df)
     else:
         print(f"No stocks matched '{strategy_module.NAME}' today.")
     print("=" * 60)

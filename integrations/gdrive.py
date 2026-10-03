@@ -3,8 +3,8 @@ Google Drive integration helper for uploading and syncing documentation.
 """
 
 import os
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.discovery import build  # type: ignore
+from googleapiclient.http import MediaFileUpload  # type: ignore
 from integrations.gsheets import _get_credentials
 
 _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

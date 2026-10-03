@@ -158,6 +158,13 @@ def main():
         regime_summary_df.to_csv(summary_out, mode="a", header=not s_exists, index=False)
         print(f"Appended regime summary to {summary_out}")
 
+    # Auto-sync all results to Google Drive folder
+    try:
+        from integrations.drive_sync import sync_all_outputs
+        sync_all_outputs()
+    except Exception as e:
+        print(f"\n[Google Drive] Sync skipped: {e}")
+
 
 if __name__ == "__main__":
     main()

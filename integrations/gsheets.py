@@ -32,9 +32,9 @@ def _get_credentials():
     - Runs the browser OAuth flow on first use.
     """
     try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-        from google_auth_oauthlib.flow import InstalledAppFlow
+        from google.oauth2.credentials import Credentials  # type: ignore
+        from google.auth.transport.requests import Request  # type: ignore
+        from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
     except ImportError:
         raise ImportError(
             "Google auth libraries not found.\n"
@@ -158,7 +158,7 @@ def append_to_sheet(watchlist_df):
         return
 
     try:
-        from googleapiclient.discovery import build
+        from googleapiclient.discovery import build  # type: ignore
     except ImportError:
         print("\n[!] Google API libraries not installed. Skipping Google Sheets sync.")
         print("    Install with: pip install google-auth google-auth-oauthlib google-api-python-client")

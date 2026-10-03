@@ -19,3 +19,12 @@ RunDate,RunTime,Strategy,Year,Trades,WinRate,ReturnPct,AvgR
 2026-09-29,18:56:19,Trend Surfer (7-Filter),2026,80,27.5,-43.74,-0.33
 2026-09-29,18:56:19,Volatility Squeeze Breakout,2025,3,33.3,-5.9,-0.38
 2026-09-29,18:56:19,Volatility Squeeze Breakout,2026,1,0.0,-4.8,-1.02
+2026-10-03,10:06:11,Baseline: Random (Close > SMA200),2026,1,100.0,4.7,0.84
+2026-10-03,10:06:11,Baseline: Random Entry,2026,1,100.0,4.7,0.84
+2026-10-03,10:06:11,EMA Trend + Pullback,2026,4,0.0,-19.66,-1.02
+2026-10-03,10:06:11,Multi-Confluence Momentum,2026,1,0.0,-7.54,-1.01
+2026-10-03,10:06:11,RSI Reversal,2026,2,50.0,1.04,0.5
+2026-10-03,10:06:11,Regime RS Breakout,2026,1,0.0,-7.45,-1.01
+2026-10-03,10:06:11,Resistance Breakout,2026,2,50.0,-1.32,-0.44
+2026-10-03,10:06:11,Smart Pullback,2026,1,0.0,-5.39,-1.02
+2026-10-03,10:06:11,Trend Surfer (7-Filter),2026,1,0.0,-3.22,-1.03

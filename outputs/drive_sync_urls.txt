@@ -1,0 +1,22 @@
+Google Drive Outputs Folder & Google Sheets (Last Synced: 2026-10-03 10:06:43)
+================================================================================
+
+Main Drive Folder:
+https://drive.google.com/drive/folders/1tgtm5qY_hXeiG6ryrjNMhkqduiexrxip
+
+Individual Google Sheets:
+--------------------------------------------------------------------------------
+- Backtest Monthly Breakdown (backtest_monthly.csv):
+  https://docs.google.com/spreadsheets/d/1jgTAtAXsTBkJDvmLHy0SlyyAf1yqfi1Cb4qZDmzmFKE/edit?usp=drivesdk
+- Backtest Regime Summary (backtest_regime_summary.csv):
+  https://docs.google.com/spreadsheets/d/1ZCILaMtUw_3QbM7C0-tjTX1p1eiKEXa33ShN_Cqf_48/edit?usp=drivesdk
+- Backtest Summary (backtest_summary.csv):
+  https://docs.google.com/spreadsheets/d/13qGTGeAvppcCOvO31cfDu3B5sbmbiuEkYe14HOus2_0/edit?usp=drivesdk
+- Backtest Trades (backtest_trades.csv):
+  https://docs.google.com/spreadsheets/d/1Xoe4GDqGCfwVwN1aNFnQBFHLV8eBJr9xR7qmkrZE2Qo/edit?usp=drivesdk
+- Backtest Trades (Regime Tagged) (backtest_trades_with_regime.csv):
+  https://docs.google.com/spreadsheets/d/1WkEEDQL5UmQ94WPyhQjcjMcc2v2OrkRGG1ruQdxShPY/edit?usp=drivesdk
+- Backtest Yearly Breakdown (backtest_yearly.csv):
+  https://docs.google.com/spreadsheets/d/1kLAFrGqSr0HA6x1UDFYq4aKwZ5GUIcb9PwxHcjmicfo/edit?usp=drivesdk
+- Swing Trading Watchlist (watchlist.csv):
+  https://docs.google.com/spreadsheets/d/107kQXz3_twvtI5nxwnJHPeh9875i8wOv1-ctpOohNJ8/edit?usp=drivesdk

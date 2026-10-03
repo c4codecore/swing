@@ -424,7 +424,7 @@ def parse_arguments():
     parser.add_argument("--days", type=int, default=DEFAULT_BACKTEST_DAYS, help="trading days to test")
     parser.add_argument("--baseline", action="store_true",
                         help="also run random-entry baselines (same stop/target/hold/cost rules)")
-    parser.add_argument("--min-rr", type=float, default=MIN_ACTUAL_RR,
+    parser.add_argument("--min-rr", "--target-rr", dest="min_rr", type=float, default=MIN_ACTUAL_RR,
                         help="minimum executable RR to accept a trade (default: %(default)s)")
     return parser.parse_args()
 
@@ -583,6 +583,13 @@ def main():
     print("  backtest_regime_summary.csv      — Performance breakdown by market regime")
     print("  backtest_yearly.csv              — Year-by-year performance")
     print("  backtest_monthly.csv             — Month-by-month performance")
+
+    # Auto-sync all results to Google Drive folder
+    try:
+        from integrations.drive_sync import sync_all_outputs
+        sync_all_outputs()
+    except Exception as e:
+        print(f"\n[Google Drive] Sync skipped: {e}")
 
 
 if __name__ == "__main__":
