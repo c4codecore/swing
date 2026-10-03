@@ -25,21 +25,26 @@ import pkgutil
 import zlib
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 
 import strategies
 from core.ohlcv_data import fetch_price_history, get_nifty50_symbols, get_nifty100_symbols
-from core.market_regime import compute_daily_regime
+from core.market_regime import compute_daily_regime, compute_market_breadth
+from core.screener import MOMENTUM_LOOKBACK_DAYS
+from portfolio import simulate_portfolio
 from regime_split import tag_trades_with_regime, print_regime_breakdown, compute_regime_summary
 
 
-HISTORY_PERIOD = "3y"
-DEFAULT_BACKTEST_DAYS = 250
+DEFAULT_HISTORY_PERIOD = "5y"
+DEFAULT_BACKTEST_DAYS = 750
 MIN_WARMUP_ROWS = 60
 MAX_HOLD_DAYS = 15
-ROUND_TRIP_COST_PCT = 0.10
+ROUND_TRIP_COST_PCT = 0.30
 MIN_TRADES_FOR_CONFIDENCE = 30
 MIN_ACTUAL_RR = 1.95            # Trades where overnight gap shrinks actual RR below this are skipped
+BOOTSTRAP_RESAMPLES = 2000
+OUT_OF_SAMPLE_FRACTION = 0.3
 
 # Random-entry baseline settings (used only with --baseline)
 BASELINE_ENTRY_PROBABILITY = 0.02   # 2% chance of entry on any stock-day
@@ -169,14 +174,36 @@ def simulate_trade(price_data, entry_index, stoploss, target):
 # Per-Symbol Walk-Forward Loop
 # ---------------------------------------------------------------------------
 
-def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_regime=None):
-    """
-    Walk-forward backtest for one individual stock symbol.
-    """
+def trade_excursions(price_data, entry_index, exit_index, entry_price, risk_per_share):
+    window = price_data.iloc[entry_index:exit_index + 1]
+    lowest_low = float(window["Low"].min())
+    highest_high = float(window["High"].max())
+    return (
+        round((entry_price - lowest_low) / risk_per_share, 2),
+        round((highest_high - entry_price) / risk_per_share, 2),
+    )
+
+
+def lookup_regime(nifty_regime, signal_date):
+    if nifty_regime is None:
+        return None
+    signal_date_norm = pd.Timestamp(signal_date).normalize()
+    day_regime = nifty_regime.get(signal_date_norm)
+    if day_regime is not None:
+        return day_regime
+    try:
+        position = nifty_regime.index.get_indexer([signal_date_norm], method="pad")[0]
+        return nifty_regime.iloc[position] if position >= 0 else None
+    except Exception:
+        return None
+
+
+def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_regime=None, target_rr=None):
     required_regime = getattr(strategy_module, "REQUIRED_REGIME", None)
     trades = []
     index = max(MIN_WARMUP_ROWS, len(price_data) - backtest_days)
     last_signal_index = len(price_data) - 2
+    closes = price_data["Close"].to_numpy()
 
     while index <= last_signal_index:
         signal = strategy_module.generate_signal(price_data.iloc[:index + 1])
@@ -185,51 +212,38 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             index += 1
             continue
 
-        # Market Regime Filter: If strategy requires 'Bullish', skip trades on non-matching days
-        if required_regime is not None and nifty_regime is not None:
-            signal_date = price_data.index[index]
-            signal_date_norm = pd.Timestamp(signal_date).normalize()
-            day_regime = nifty_regime.get(signal_date_norm)
-            if day_regime is None:
-                try:
-                    day_regime = nifty_regime.iloc[
-                        nifty_regime.index.get_indexer([signal_date_norm], method="pad")[0]
-                    ]
-                except Exception:
-                    day_regime = None
-            if day_regime != required_regime:
-                index += 1
-                continue
+        day_regime = lookup_regime(nifty_regime, price_data.index[index])
+        if required_regime is not None and nifty_regime is not None and day_regime != required_regime:
+            index += 1
+            continue
 
         signal_entry = float(signal["Entry"])
         stop = float(signal["StopLoss"])
-        target = float(signal["Target"])
-
         planned_risk = signal_entry - stop
-        planned_reward = target - signal_entry
+        if planned_risk <= 0:
+            index += 1
+            continue
 
-        if planned_risk <= 0 or planned_reward <= 0:
+        target = signal_entry + planned_risk * target_rr if target_rr else float(signal["Target"])
+        planned_reward = target - signal_entry
+        if planned_reward <= 0:
             index += 1
             continue
 
         entry_index = index + 1
         actual_entry = float(price_data["Open"].iloc[entry_index])
 
-        # Skip if overnight opening gap destroys the risk/reward geometry
         if actual_entry <= stop or actual_entry >= target:
             index += 1
             continue
 
         actual_risk = actual_entry - stop
         actual_reward = target - actual_entry
-
         if actual_risk <= 0 or actual_reward <= 0:
             index += 1
             continue
 
         actual_rr = actual_reward / actual_risk
-
-        # Strategy-level override of the minimum acceptable executable RR
         min_rr = float(getattr(strategy_module, "MIN_ACTUAL_RR", MIN_ACTUAL_RR))
         if actual_rr < min_rr:
             index += 1
@@ -241,8 +255,12 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             continue
 
         exit_index, exit_price, reason = outcome
+        mae_r, mfe_r = trade_excursions(price_data, entry_index, exit_index, actual_entry, actual_risk)
         cost = actual_entry * ROUND_TRIP_COST_PCT / 100
         pnl = exit_price - actual_entry - cost
+        momentum_60d = None
+        if index >= MOMENTUM_LOOKBACK_DAYS:
+            momentum_60d = round((closes[index] / closes[index - MOMENTUM_LOOKBACK_DAYS] - 1) * 100, 2)
 
         trades.append({
             "Strategy": strategy_module.NAME,
@@ -263,8 +281,12 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             "RiskPerShare": round(actual_risk, 2),
             "RewardPerShare": round(actual_reward, 2),
             "ReturnPct": round(pnl / actual_entry * 100, 2),
-            "RMultiple": round(pnl / actual_risk, 2),          # Actual risk based R-multiple
-            "PlannedRMultiple": round(pnl / planned_risk, 2),  # Planned risk based
+            "RMultiple": round(pnl / actual_risk, 2),
+            "PlannedRMultiple": round(pnl / planned_risk, 2),
+            "MaeR": mae_r,
+            "MfeR": mfe_r,
+            "Momentum60D": momentum_60d,
+            "Regime": day_regime,
         })
 
         index = max(exit_index, index + 1)
@@ -335,6 +357,36 @@ def monthly_performance(df):
     )
 
 
+def bootstrap_expectancy_ci(trades_df, resamples=BOOTSTRAP_RESAMPLES, seed=7):
+    if len(trades_df) < 5:
+        return None, None
+    week_keys = pd.to_datetime(trades_df["SignalDate"]).dt.to_period("W").astype(str)
+    weekly_returns = [group.to_numpy() for _, group in trades_df["ReturnPct"].groupby(week_keys)]
+    rng = np.random.default_rng(seed)
+    sample_means = []
+    for _ in range(resamples):
+        picks = rng.integers(0, len(weekly_returns), len(weekly_returns))
+        sample_means.append(np.concatenate([weekly_returns[i] for i in picks]).mean())
+    low, high = np.percentile(sample_means, [2.5, 97.5])
+    return round(float(low), 2), round(float(high), 2)
+
+
+def apply_daily_cap(trades_df, max_per_day):
+    if trades_df.empty or not max_per_day:
+        return trades_df
+    ranked = trades_df.sort_values("Momentum60D", ascending=False, na_position="last")
+    capped = ranked.groupby(["Strategy", "SignalDate"], sort=False).head(max_per_day)
+    return capped.sort_values(["Strategy", "SignalDate"]).reset_index(drop=True)
+
+
+def split_in_and_out_of_sample(trades_df, out_of_sample_fraction=OUT_OF_SAMPLE_FRACTION):
+    signal_dates = sorted(trades_df["SignalDate"].unique())
+    if len(signal_dates) < 4:
+        return trades_df, trades_df.iloc[0:0]
+    cutoff = signal_dates[int(len(signal_dates) * (1 - out_of_sample_fraction))]
+    return trades_df[trades_df["SignalDate"] < cutoff], trades_df[trades_df["SignalDate"] >= cutoff]
+
+
 def summarize(name, df):
     """
     Computes key executive metrics across all backtest trades for a strategy.
@@ -346,6 +398,7 @@ def summarize(name, df):
     losses = df[df["ReturnPct"] <= 0]
     gross_loss = abs(losses["ReturnPct"].sum())
     reasons = df["ExitReason"]
+    ci_low, ci_high = bootstrap_expectancy_ci(df)
 
     return {
         "Strategy": name,
@@ -354,6 +407,8 @@ def summarize(name, df):
         "AvgWin%": round(wins["ReturnPct"].mean(), 2) if len(wins) else 0.0,
         "AvgLoss%": round(losses["ReturnPct"].mean(), 2) if len(losses) else 0.0,
         "Expectancy%": round(df["ReturnPct"].mean(), 2),
+        "Exp%CI95Low": ci_low,
+        "Exp%CI95High": ci_high,
         "AvgR": round(df["RMultiple"].mean(), 2),
         "ProfitFactor": round(wins["ReturnPct"].sum() / gross_loss, 2) if gross_loss else float("inf"),
         "TotalReturn%": round(df["ReturnPct"].sum(), 1),
@@ -372,11 +427,11 @@ def summarize(name, df):
 # Runner & Batch Loader
 # ---------------------------------------------------------------------------
 
-def run_backtest(strategy_module, histories, days, nifty_regime=None):
+def run_backtest(strategy_module, histories, days, nifty_regime=None, target_rr=None):
     """Runs walk-forward backtest across all loaded stock price histories."""
     trades = []
     for symbol, data in histories.items():
-        trades.extend(backtest_symbol(strategy_module, symbol, data, days, nifty_regime))
+        trades.extend(backtest_symbol(strategy_module, symbol, data, days, nifty_regime, target_rr))
     return pd.DataFrame(trades)
 
 
@@ -422,18 +477,102 @@ def parse_arguments():
     parser.add_argument("--universe", choices=["nifty50", "nifty100"], default="nifty100")
     parser.add_argument("--stocks", type=int, default=None, help="limit number of stocks (quick test)")
     parser.add_argument("--days", type=int, default=DEFAULT_BACKTEST_DAYS, help="trading days to test")
+    parser.add_argument("--period", default=DEFAULT_HISTORY_PERIOD,
+                        help="yfinance history to download; must cover --days plus ~250 warmup bars (default: %(default)s)")
+    parser.add_argument("--regime", choices=["basic", "strict"], default="strict",
+                        help="basic: Nifty EMA20/EMA50 only. strict: also rising EMA50 and market breadth >= 50%%")
+    parser.add_argument("--max-per-day", type=int, default=None,
+                        help="keep only the N highest 60-day-momentum signals per strategy per day")
+    parser.add_argument("--force-rr", type=float, default=None,
+                        help="replace each strategy's target with entry + RR x risk (test 1.5 vs 2.0 vs 3.0)")
+    parser.add_argument("--capital", type=float, default=1_000_000, help="starting capital for the portfolio simulation")
+    parser.add_argument("--risk-pct", type=float, default=1.0, help="percent of equity risked per trade in the portfolio simulation")
+    parser.add_argument("--max-positions", type=int, default=6, help="maximum simultaneous positions in the portfolio simulation")
+    parser.add_argument("--max-hold", type=int, default=MAX_HOLD_DAYS, help="maximum holding days (default: %(default)s)")
     parser.add_argument("--baseline", action="store_true",
                         help="also run random-entry baselines (same stop/target/hold/cost rules)")
-    parser.add_argument("--min-rr", "--target-rr", dest="min_rr", type=float, default=MIN_ACTUAL_RR,
-                        help="minimum executable RR to accept a trade (default: %(default)s)")
+    parser.add_argument("--min-rr", "--target-rr", dest="min_rr", type=float, default=None,
+                        help="minimum executable RR to accept a trade (default: 1.95, or 97.5%% of --force-rr)")
     return parser.parse_args()
 
 
+def print_excursion_report(trade_frames):
+    print("\nStop and target diagnostics (MAE/MFE in R multiples):")
+    print("-" * 110)
+    for trades_df in trade_frames:
+        name = trades_df["Strategy"].iloc[0]
+        stopped = trades_df[trades_df["ExitReason"].str.startswith("stop")]
+        timed = trades_df[trades_df["ExitReason"] == "time_exit"]
+        reached_one_r = (stopped["MfeR"] >= 1.0).mean() * 100 if len(stopped) else 0.0
+        median_mae_winners = trades_df[trades_df["ReturnPct"] > 0]["MaeR"].median()
+        print(f"  {name:<30} stopped={len(stopped):>4}  stopped-but-reached-1R={reached_one_r:>5.1f}%  "
+              f"median MAE of winners={median_mae_winners:>5.2f}R  "
+              f"time-exit median MFE={timed['MfeR'].median() if len(timed) else float('nan'):>5.2f}R")
+
+
+def print_confluence_report(trade_frames):
+    all_trades = pd.concat(trade_frames, ignore_index=True)
+    if all_trades["Strategy"].nunique() < 2:
+        return
+    strategies_per_signal = all_trades.groupby(["Stock", "SignalDate"])["Strategy"].transform("nunique")
+    print("\nConfluence check (same stock, same signal day, fired by several strategies):")
+    print("-" * 110)
+    for label, subset in (
+        ("fired by 1 strategy", all_trades[strategies_per_signal == 1]),
+        ("fired by 2+ strategies", all_trades[strategies_per_signal >= 2]),
+    ):
+        if subset.empty:
+            continue
+        wins = subset[subset["ReturnPct"] > 0]["ReturnPct"].sum()
+        losses = abs(subset[subset["ReturnPct"] <= 0]["ReturnPct"].sum())
+        profit_factor = round(wins / losses, 2) if losses else float("inf")
+        print(f"  {label:<24} Trades={len(subset):>5}  WinRate%={(subset['ReturnPct'] > 0).mean() * 100:>5.1f}  "
+              f"Expectancy%={subset['ReturnPct'].mean():>6.2f}  ProfitFactor={profit_factor:>5}")
+
+
+def print_portfolio_report(trade_frames, args):
+    print("\nPortfolio simulation "
+          f"(capital {args.capital:,.0f}, risk {args.risk_pct}% per trade, max {args.max_positions} positions, "
+          "ranked by 60-day momentum):")
+    print("-" * 110)
+    rows = []
+    for trades_df in trade_frames:
+        summary, equity_curve = simulate_portfolio(
+            trades_df, args.capital, args.risk_pct, args.max_positions)
+        if summary.empty:
+            continue
+        summary.insert(0, "Strategy", trades_df["Strategy"].iloc[0])
+        rows.append(summary)
+    if not rows:
+        return None
+    portfolio_summary = pd.concat(rows, ignore_index=True)
+    print(portfolio_summary.to_string(index=False))
+    return portfolio_summary
+
+
+def print_in_and_out_of_sample(trade_frames):
+    print("\nIn-sample (older signals) vs out-of-sample (most recent signals):")
+    print("-" * 110)
+    for trades_df in trade_frames:
+        name = trades_df["Strategy"].iloc[0]
+        in_sample, out_of_sample = split_in_and_out_of_sample(trades_df)
+        for label, part in (("in-sample ", in_sample), ("out-sample", out_of_sample)):
+            if part.empty:
+                continue
+            row = summarize(name, part)
+            print(f"  {name:<30} {label} Trades={row['Trades']:>4}  WinRate%={row['WinRate%']:>5}  "
+                  f"Expectancy%={row['Expectancy%']:>6}  ProfitFactor={row['ProfitFactor']:>5}")
+
+
 def main():
-    global MIN_ACTUAL_RR
+    global MIN_ACTUAL_RR, MAX_HOLD_DAYS
 
     args = parse_arguments()
-    MIN_ACTUAL_RR = args.min_rr
+    if args.min_rr is not None:
+        MIN_ACTUAL_RR = args.min_rr
+    elif args.force_rr:
+        MIN_ACTUAL_RR = round(0.975 * args.force_rr, 3)
+    MAX_HOLD_DAYS = args.max_hold
 
     available = discover_strategies()
 
@@ -462,28 +601,37 @@ def main():
     run_date = now.strftime("%Y-%m-%d")
     run_time = now.strftime("%H:%M:%S")
 
-    # Pre-compute Nifty regime series
-    print("\nFetching Nifty regime data ...")
-    try:
-        nifty_data = fetch_price_history("^NSEI", period="3y")
-        nifty_regime = compute_daily_regime(nifty_data) if nifty_data is not None else None
-        if nifty_regime is not None:
-            nifty_regime.index = pd.to_datetime(nifty_regime.index).normalize()
-            print(f"  Nifty regime series: {len(nifty_regime)} days")
-    except Exception as e:
-        nifty_regime = None
-        print(f"  [!] Could not fetch Nifty regime: {e}")
-
-    # Load price histories ONCE for all strategies
     print(f"\nLoading price data for {len(symbols)} stocks (shared across all strategies) ...")
-    histories = load_price_histories(symbols, "3y")
+    histories = load_price_histories(symbols, args.period)
+
+    print("\nBuilding Nifty regime series ...")
+    nifty_regime = None
+    try:
+        nifty_data = fetch_price_history("^NSEI", period=args.period)
+        if nifty_data is not None:
+            breadth = compute_market_breadth(histories) if args.regime == "strict" else None
+            nifty_regime = compute_daily_regime(nifty_data, breadth)
+            nifty_regime.index = pd.to_datetime(nifty_regime.index).normalize()
+            counts = nifty_regime.tail(args.days).value_counts().to_dict()
+            print(f"  Regime mode: {args.regime}. Days in test window: {counts}")
+    except Exception as e:
+        print(f"  [!] Could not build Nifty regime: {e}")
+
+    needs_regime = [m.NAME for m in selected.values() if getattr(m, "REQUIRED_REGIME", None)]
+    if needs_regime and nifty_regime is None:
+        print("\n[ERROR] Nifty regime data is unavailable, but these strategies need it:")
+        for name in needs_regime:
+            print(f"  - {name}")
+        print("Stopping instead of silently running them on every market day. Check the network and rerun.")
+        return
 
     for _, strategy_module in selected.items():
         print(f"\nBacktesting {strategy_module.NAME} ...")
         req = getattr(strategy_module, "REQUIRED_REGIME", None)
         if req:
             print(f"  (Regime filter active: only '{req}' days counted)")
-        trades_df = run_backtest(strategy_module, histories, args.days, nifty_regime)
+        trades_df = run_backtest(strategy_module, histories, args.days, nifty_regime, args.force_rr)
+        trades_df = apply_daily_cap(trades_df, args.max_per_day)
         summaries.append(summarize(strategy_module.NAME, trades_df))
         if not trades_df.empty:
             trade_frames.append(trades_df)
@@ -501,6 +649,16 @@ def main():
     for row in summaries:
         if row["Trades"] < MIN_TRADES_FOR_CONFIDENCE:
             print(f"\n[!] {row['Strategy']}: only {row['Trades']} trades — sample too small to trust.")
+        elif row.get("Exp%CI95Low") is not None and row["Exp%CI95Low"] <= 0:
+            print(f"\n[!] {row['Strategy']}: expectancy 95% CI includes zero "
+                  f"({row['Exp%CI95Low']}% to {row['Exp%CI95High']}%) — edge not statistically proven.")
+
+    print_in_and_out_of_sample(trade_frames)
+    portfolio_summary = None
+    if trade_frames:
+        print_excursion_report(trade_frames)
+        print_confluence_report(trade_frames)
+        portfolio_summary = print_portfolio_report(trade_frames, args)
 
     print("\nNote: today's index constituents are used for the whole period (survivorship bias),")
     print("so real results are usually somewhat worse than this.")
@@ -576,6 +734,12 @@ def main():
                 regime_summary_df.insert(2, "TestDays", args.days)
                 append_dataframe_to_csv(regime_summary_df, os.path.join(output_dir, "backtest_regime_summary.csv"))
 
+    if portfolio_summary is not None and not portfolio_summary.empty:
+        portfolio_to_save = portfolio_summary.copy()
+        portfolio_to_save.insert(0, "RunDate", run_date)
+        portfolio_to_save.insert(1, "RunTime", run_time)
+        append_dataframe_to_csv(portfolio_to_save, os.path.join(output_dir, "backtest_portfolio_summary.csv"))
+
     print(f"\nAppended backtest results to {output_dir}:")
     print("  backtest_summary.csv             — Cumulative per-strategy summaries with timestamps")
     print("  backtest_trades.csv              — All simulated individual trade logs")
@@ -583,6 +747,7 @@ def main():
     print("  backtest_regime_summary.csv      — Performance breakdown by market regime")
     print("  backtest_yearly.csv              — Year-by-year performance")
     print("  backtest_monthly.csv             — Month-by-month performance")
+    print("  backtest_portfolio_summary.csv   — Capital-limited portfolio simulation per strategy")
 
     # Auto-sync all results to Google Drive folder
     try:

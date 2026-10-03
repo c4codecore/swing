@@ -1,35 +1,60 @@
 """
-Resistance Breakout: buy a close above the 20-day high on heavy volume.
+Resistance Breakout: a fresh close above the 20-day high, on heavy volume, inside an uptrend.
 
 Filters (all must pass):
-1. Close above the highest high of the previous 20 sessions
-2. Volume above 1.5x the 20-day average (the average includes today)
+1. Close above the 50 EMA and the 50 EMA above the 200 EMA
+2. Close above the highest high of the previous 20 sessions
+3. Not chasing: close no more than 1 ATR above that resistance level
+4. Volume at least 1.5x the average of the previous 20 sessions
+5. Bullish candle closing in the top 40% of its day range
+6. Average daily turnover of at least Rs 5 crore
 
-Entry: today's close. Stop: 2% below the broken resistance. Target: 2x the risk.
+Entry: today's close. Stop: below the broken resistance, widened to at least 1.5 ATR.
+Target: 2x the risk. Only runs while the Nifty regime is Bullish.
 """
 
+from core.indicators import ema, average_true_range
+from core.trade_levels import build_long_levels, average_turnover
+
 NAME = "Resistance Breakout"
+REQUIRED_REGIME = "Bullish"
+DATA_PERIOD = "2y"
 
 LOOKBACK_DAYS = 20
-VOLUME_LOOKBACK_DAYS = 20
 VOLUME_MULTIPLIER = 1.5
-STOPLOSS_BUFFER_PCT = 2.0
+MAX_EXTENSION_ATR = 1.0
+MIN_CLOSE_POSITION_IN_RANGE = 0.6
+ATR_PERIOD = 14
 RISK_REWARD_RATIO = 2.0
-MIN_ROWS = LOOKBACK_DAYS + 5
+MIN_AVG_TURNOVER_RS = 5_00_00_000
+MIN_ROWS = 215
 
 
 def _prepare_indicators(price_data):
     df = price_data.copy()
-    df["AvgVolume"] = df["Volume"].rolling(VOLUME_LOOKBACK_DAYS).mean()
+    df["EMA50"] = ema(df["Close"], 50)
+    df["EMA200"] = ema(df["Close"], 200)
+    df["ATR"] = average_true_range(df, ATR_PERIOD)
+    df["AvgVolumePrev"] = df["Volume"].shift(1).rolling(LOOKBACK_DAYS).mean()
     return df
 
 
 def _filters(df):
     today = df.iloc[-1]
-    resistance_level = df.iloc[-(LOOKBACK_DAYS + 1):-1]["High"].max()
+    resistance_level = float(df.iloc[-(LOOKBACK_DAYS + 1):-1]["High"].max())
+    day_range = float(today["High"] - today["Low"])
+    close_position = (float(today["Close"] - today["Low"]) / day_range) if day_range > 0 else 0.0
     return resistance_level, [
+        ("Uptrend (close > EMA50 > EMA200)",
+         lambda: bool(today["Close"] > today["EMA50"] > today["EMA200"])),
         ("Close above 20-day high", lambda: bool(today["Close"] > resistance_level)),
-        ("Volume above 1.5x average", lambda: bool(today["Volume"] > today["AvgVolume"] * VOLUME_MULTIPLIER)),
+        ("Not extended (within 1 ATR of resistance)",
+         lambda: bool(today["Close"] - resistance_level <= MAX_EXTENSION_ATR * today["ATR"])),
+        ("Volume at least 1.5x previous 20-day average",
+         lambda: bool(today["Volume"] >= today["AvgVolumePrev"] * VOLUME_MULTIPLIER)),
+        ("Strong bullish candle",
+         lambda: bool(today["Close"] > today["Open"] and close_position >= MIN_CLOSE_POSITION_IN_RANGE)),
+        ("Turnover at least Rs 5 crore", lambda: average_turnover(df) >= MIN_AVG_TURNOVER_RS),
     ]
 
 
@@ -49,21 +74,15 @@ def generate_signal(price_data):
         return None
 
     today = df.iloc[-1]
-    entry_price = round(float(today["Close"]), 2)
-    stoploss_price = round(float(resistance_level) * (1 - STOPLOSS_BUFFER_PCT / 100), 2)
-    risk_per_share = entry_price - stoploss_price
-    if risk_per_share <= 0:
+    atr = float(today["ATR"])
+    levels = build_long_levels(float(today["Close"]), resistance_level, atr, RISK_REWARD_RATIO)
+    if levels is None:
         return None
-    target_price = round(entry_price + risk_per_share * RISK_REWARD_RATIO, 2)
 
-    return {
-        "Entry": entry_price,
-        "StopLoss": stoploss_price,
-        "Target": target_price,
-        "Risk_Rs": round(risk_per_share, 2),
-        "Reward_Rs": round(target_price - entry_price, 2),
-        "ResistanceLevel": round(float(resistance_level), 2),
-        "Volume": int(today["Volume"]),
-        "AvgVolume": int(today["AvgVolume"]),
+    levels.update({
+        "ResistanceLevel": round(resistance_level, 2),
+        "VolumeRatio": round(float(today["Volume"] / today["AvgVolumePrev"]), 2),
+        "ATR": round(atr, 2),
         "Date": df.index[-1].strftime("%Y-%m-%d"),
-    }
+    })
+    return levels

@@ -11,7 +11,7 @@ Filters (all seven must pass):
 7. Bullish candle (close above open)
 
 Entry: today's close. Stop: entry - 1.5 x ATR(14). Target: entry + 3 x ATR(14), which is
-always a 1:2 risk-reward. Most filters come from the same price series, so they overlap
+always a 1:2 risk-reward. Only runs while the Nifty regime is Bullish. Most filters come from the same price series, so they overlap
 heavily; use diagnostic.py to see how much each one actually removes.
 """
 
@@ -21,6 +21,7 @@ from core.indicators import ema, wilder_rsi, average_true_range, macd, supertren
 
 
 NAME = "Trend Surfer (7-Filter)"
+REQUIRED_REGIME = "Bullish"
 
 EMA_FAST_PERIOD = 20
 EMA_SLOW_PERIOD = 50

@@ -165,17 +165,67 @@ def run_one(strategy_key, stock_universe, current_regime=None, price_histories=N
     save_watchlist(strategy_key, strategy_module, signals)
 
 
+CONSENSUS_MIN_STRATEGIES = 2
+
+
+def run_consensus(stock_universe, current_regime, price_histories):
+    regime_trend = current_regime["trend"] if current_regime else None
+    hits_by_ticker = {}
+    for strategy_key, strategy_module in STRATEGIES.items():
+        required = getattr(strategy_module, "REQUIRED_REGIME", None)
+        if required is not None and regime_trend != required:
+            continue
+        for signal in screen_stocks(strategy_module, stock_universe, price_histories=price_histories):
+            hits_by_ticker.setdefault(signal["Ticker"], []).append(signal)
+
+    rows = []
+    for ticker, signals in hits_by_ticker.items():
+        if len(signals) < CONSENSUS_MIN_STRATEGIES:
+            continue
+        rows.append({
+            "Date": datetime.now().strftime("%Y-%m-%d"),
+            "Stock": ticker,
+            "StrategyCount": len(signals),
+            "Strategies": "; ".join(sorted(signal["Strategy"] for signal in signals)),
+            "Entry": max(signal["Entry"] for signal in signals),
+            "StopLoss": max(signal["StopLoss"] for signal in signals),
+            "Momentum60D": signals[0].get("Momentum60D"),
+        })
+
+    print("\n" + "=" * 60)
+    if not rows:
+        print(f"No stock was flagged by {CONSENSUS_MIN_STRATEGIES} or more strategies today.")
+        print("=" * 60)
+        return
+
+    consensus_df = pd.DataFrame(rows).sort_values(
+        ["StrategyCount", "Momentum60D"], ascending=[False, False])
+    print(f"{len(consensus_df)} stock(s) flagged by {CONSENSUS_MIN_STRATEGIES}+ strategies:\n")
+    print(consensus_df.to_string(index=False))
+
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "consensus_watchlist.csv")
+    consensus_df.to_csv(output_path, mode="a", header=not os.path.isfile(output_path), index=False)
+    print(f"\nAppended to {output_path}")
+    print("=" * 60)
+
+
+def load_universe_and_regime():
+    stock_universe = get_stock_list()
+    print(f"\nLoading price histories for {len(stock_universe)} stocks ...")
+    price_histories = fetch_price_histories_batch(stock_universe, period="3y", max_workers=10)
+    current_regime = get_market_regime(price_histories=price_histories)
+    print_regime_banner(current_regime)
+    return stock_universe, price_histories, current_regime
+
+
 def run_all():
     """
     High-performance batch runner:
     Loads price data once for the universe, then evaluates all strategies in memory.
     """
-    current_regime = get_market_regime()
-    print_regime_banner(current_regime)
-
-    stock_universe = get_stock_list()
-    print(f"\nLoading price histories for {len(stock_universe)} stocks (shared across all strategies) ...")
-    price_histories = fetch_price_histories_batch(stock_universe, period="3y", max_workers=10)
+    stock_universe, price_histories, current_regime = load_universe_and_regime()
 
     for strategy_key in STRATEGIES:
         print("\n" + "#" * 60)
@@ -187,17 +237,16 @@ def run_all():
 if __name__ == "__main__":
     print("\nReminder: This is a screening tool, not a buy/sell signal.")
 
-    if len(sys.argv) > 1 and sys.argv[1] != "menu":
-        current_regime = get_market_regime()
-        print_regime_banner(current_regime)
-        stock_universe = get_stock_list()
-        run_one(sys.argv[1], stock_universe, current_regime)
+    if len(sys.argv) > 1 and sys.argv[1] == "consensus":
+        stock_universe, price_histories, current_regime = load_universe_and_regime()
+        run_consensus(stock_universe, current_regime, price_histories)
+    elif len(sys.argv) > 1 and sys.argv[1] != "menu":
+        stock_universe, price_histories, current_regime = load_universe_and_regime()
+        run_one(sys.argv[1], stock_universe, current_regime, price_histories)
     elif len(sys.argv) > 1 and sys.argv[1] == "menu":
         selected_key = show_menu()
         if selected_key:
-            current_regime = get_market_regime()
-            print_regime_banner(current_regime)
-            stock_universe = get_stock_list()
-            run_one(selected_key, stock_universe, current_regime)
+            stock_universe, price_histories, current_regime = load_universe_and_regime()
+            run_one(selected_key, stock_universe, current_regime, price_histories)
     else:
         run_all()

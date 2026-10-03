@@ -1,39 +1,57 @@
 """
-RSI Reversal: buy when RSI climbs back above the oversold line.
+RSI Reversal (dip buy inside an uptrend): RSI dips into the low zone and turns back up.
 
 Filters (all must pass):
-1. RSI(14) was below 30 yesterday and is at or above 30 today
-2. Bounce: close above yesterday's close
+1. Close above the 200 EMA and the 50 EMA above the 200 EMA
+2. RSI(14) was at or below 35 at some point in the last 5 sessions
+3. RSI crossed back above 40 today
+4. Bullish candle that closes above yesterday's close
+5. Average daily turnover of at least Rs 5 crore
 
-Entry: today's close. Stop: lowest low of the last 5 sessions. Target: 2x the risk.
-This is a counter-trend setup and performs poorly while the broader market is falling.
+Entry: today's close. Stop: lowest low of the last 5 sessions, widened to at least 1.5 ATR.
+Target: 2x the risk. Only runs while the Nifty regime is Bullish.
 """
 
-from core.indicators import wilder_rsi
+from core.indicators import ema, wilder_rsi, average_true_range
+from core.trade_levels import build_long_levels, average_turnover
 
 NAME = "RSI Reversal"
-
+REQUIRED_REGIME = "Bullish"
+DATA_PERIOD = "2y"
 
 RSI_PERIOD = 14
-RSI_OVERSOLD_LEVEL = 30
+RSI_DIP_LEVEL = 35
+RSI_DIP_LOOKBACK_DAYS = 5
+RSI_RECOVERY_LEVEL = 40
 STOPLOSS_LOOKBACK_DAYS = 5
+ATR_PERIOD = 14
 RISK_REWARD_RATIO = 2.0
-MIN_ROWS = RSI_PERIOD + 5
+MIN_AVG_TURNOVER_RS = 5_00_00_000
+MIN_ROWS = 215
 
 
 def _prepare_indicators(price_data):
     df = price_data.copy()
     df["RSI"] = wilder_rsi(df["Close"], RSI_PERIOD)
+    df["ATR"] = average_true_range(df, ATR_PERIOD)
+    df["EMA50"] = ema(df["Close"], 50)
+    df["EMA200"] = ema(df["Close"], 200)
     return df
 
 
 def _filters(df):
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
+    recent_rsi_low = df["RSI"].iloc[-(RSI_DIP_LOOKBACK_DAYS + 1):].min()
     return [
-        ("RSI crossed back above 30",
-         lambda: bool(yesterday["RSI"] < RSI_OVERSOLD_LEVEL and today["RSI"] >= RSI_OVERSOLD_LEVEL)),
-        ("Close above yesterday's close", lambda: bool(today["Close"] > yesterday["Close"])),
+        ("Uptrend (close > EMA200, EMA50 > EMA200)",
+         lambda: bool(today["Close"] > today["EMA200"] and today["EMA50"] > today["EMA200"])),
+        ("RSI dipped to 35 or lower recently", lambda: bool(recent_rsi_low <= RSI_DIP_LEVEL)),
+        ("RSI crossed back above 40",
+         lambda: bool(yesterday["RSI"] < RSI_RECOVERY_LEVEL <= today["RSI"])),
+        ("Bullish candle above yesterday's close",
+         lambda: bool(today["Close"] > today["Open"] and today["Close"] > yesterday["Close"])),
+        ("Turnover at least Rs 5 crore", lambda: average_turnover(df) >= MIN_AVG_TURNOVER_RS),
     ]
 
 
@@ -52,19 +70,15 @@ def generate_signal(price_data):
         return None
 
     today = df.iloc[-1]
-    entry_price = round(float(today["Close"]), 2)
-    stoploss_price = round(float(df["Low"].tail(STOPLOSS_LOOKBACK_DAYS).min()), 2)
-    risk_per_share = entry_price - stoploss_price
-    if risk_per_share <= 0:
+    atr = float(today["ATR"])
+    swing_low = float(df["Low"].tail(STOPLOSS_LOOKBACK_DAYS).min())
+    levels = build_long_levels(float(today["Close"]), swing_low, atr, RISK_REWARD_RATIO)
+    if levels is None:
         return None
-    target_price = round(entry_price + risk_per_share * RISK_REWARD_RATIO, 2)
 
-    return {
-        "Entry": entry_price,
-        "StopLoss": stoploss_price,
-        "Target": target_price,
-        "Risk_Rs": round(risk_per_share, 2),
-        "Reward_Rs": round(target_price - entry_price, 2),
+    levels.update({
         "RSI": round(float(today["RSI"]), 2),
+        "ATR": round(atr, 2),
         "Date": df.index[-1].strftime("%Y-%m-%d"),
-    }
+    })
+    return levels

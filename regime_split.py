@@ -23,16 +23,14 @@ MIN_TRADES_FOR_CONFIDENCE = 30
 
 
 def tag_trades_with_regime(trades_df, regime_series):
-    """
-    Tags each trade in trades_df with the corresponding Nifty regime on its EntryDate.
-    Uses merge_asof backward match on datetime index.
-    """
     if trades_df.empty:
         return trades_df
+    if "Regime" in trades_df.columns:
+        return trades_df.copy()
 
+    date_column = "SignalDate" if "SignalDate" in trades_df.columns else "EntryDate"
     trades_df = trades_df.copy()
-    # Normalize to seconds — ensures exact timestamp matching
-    trades_df["EntryDate_DT"] = pd.to_datetime(trades_df["EntryDate"]).astype("datetime64[s]")
+    trades_df["TradeDate_DT"] = pd.to_datetime(trades_df[date_column]).astype("datetime64[s]")
 
     regime_df = regime_series.rename("Regime").reset_index()
     regime_df.columns = ["RegimeDate", "Regime"]
@@ -40,12 +38,10 @@ def tag_trades_with_regime(trades_df, regime_series):
     regime_df = regime_df.sort_values("RegimeDate")
 
     tagged = pd.merge_asof(
-        trades_df.sort_values("EntryDate_DT"), regime_df,
-        left_on="EntryDate_DT", right_on="RegimeDate", direction="backward",
+        trades_df.sort_values("TradeDate_DT"), regime_df,
+        left_on="TradeDate_DT", right_on="RegimeDate", direction="backward",
     )
-    tagged = tagged.drop(columns=["EntryDate_DT", "RegimeDate"], errors="ignore")
-    # Place 'Regime' right next to 'Strategy' or 'Stock' if possible
-    return tagged
+    return tagged.drop(columns=["TradeDate_DT", "RegimeDate"], errors="ignore")
 
 
 def compute_regime_summary(tagged_trades):
