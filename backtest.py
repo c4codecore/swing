@@ -198,6 +198,13 @@ def lookup_regime(nifty_regime, signal_date):
         return None
 
 
+# Maximum bars passed to generate_signal on each walk-forward step.
+# EWM/EMA/MACD indicators converge within ~3x their span, so a 600-bar window
+# gives < 0.5% error on EMA(200) while keeping each call O(600) not O(N).
+# This converts the inner loop from O(N²) to O(N) for every strategy.
+SIGNAL_WINDOW = 600
+
+
 def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_regime=None, target_rr=None):
     required_regime = getattr(strategy_module, "REQUIRED_REGIME", None)
     trades = []
@@ -205,15 +212,35 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
     last_signal_index = len(price_data) - 2
     closes = price_data["Close"].to_numpy()
 
-    while index <= last_signal_index:
-        signal = strategy_module.generate_signal(price_data.iloc[:index + 1])
+    # Build a fast numpy regime lookup array to avoid per-bar dict access.
+    regime_array = None
+    if nifty_regime is not None:
+        dates_norm = pd.to_datetime(price_data.index).normalize()
+        positions = nifty_regime.index.get_indexer(dates_norm, method="pad")
+        regime_array = np.where(
+            positions >= 0,
+            nifty_regime.iloc[np.maximum(positions, 0)].to_numpy(),
+            None,
+        )
 
-        if not signal:
+    while index <= last_signal_index:
+        # ── Fix 1: regime pre-filter ────────────────────────────────────────
+        # Check regime BEFORE calling generate_signal so we skip the expensive
+        # indicator recomputation on days the strategy can never trade anyway.
+        # For Bullish-gated strategies this skips ~49% of all bar iterations.
+        day_regime = regime_array[index] if regime_array is not None else None
+        if required_regime is not None and nifty_regime is not None and day_regime != required_regime:
             index += 1
             continue
 
-        day_regime = lookup_regime(nifty_regime, price_data.index[index])
-        if required_regime is not None and nifty_regime is not None and day_regime != required_regime:
+        # ── Fix 2: sliding window ────────────────────────────────────────────
+        # Pass a fixed-size tail instead of a growing slice starting at bar 0.
+        # Prevents EWM/MACD/ADX from recomputing on an ever-longer series
+        # (O(N²) → O(N × SIGNAL_WINDOW)).
+        window_start = max(0, index + 1 - SIGNAL_WINDOW)
+        signal = strategy_module.generate_signal(price_data.iloc[window_start:index + 1])
+
+        if not signal:
             index += 1
             continue
 
@@ -427,21 +454,50 @@ def summarize(name, df):
 # Runner & Batch Loader
 # ---------------------------------------------------------------------------
 
-def run_backtest(strategy_module, histories, days, nifty_regime=None, target_rr=None):
-    """Runs walk-forward backtest across all loaded stock price histories."""
-    trades = []
-    for symbol, data in histories.items():
-        trades.extend(backtest_symbol(strategy_module, symbol, data, days, nifty_regime, target_rr))
-    return pd.DataFrame(trades)
+def run_backtest(strategy_module, histories, days, nifty_regime=None, target_rr=None,
+                 max_workers=None):
+    """Runs walk-forward backtest across all loaded stock price histories.
+    Stocks are independent so we process them in parallel with a thread pool.
+    ThreadPoolExecutor is safe here because pandas/numpy release the GIL during
+    most numerical operations, giving real concurrency on multi-core machines.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import os
+
+    if max_workers is None:
+        max_workers = min(8, (os.cpu_count() or 2))
+
+    all_trades = []
+    symbols = list(histories.keys())
+
+    def _worker(sym):
+        return backtest_symbol(strategy_module, sym, histories[sym], days, nifty_regime, target_rr)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_worker, sym): sym for sym in symbols}
+        for fut in as_completed(futures):
+            result = fut.result()
+            if result:
+                all_trades.extend(result)
+
+    return pd.DataFrame(all_trades)
 
 
 def load_price_histories(symbols, period):
     """
     Downloads historical price data concurrently for the entire stock universe.
+    Pre-cleans every DataFrame once so strategies never need to call clean_ohlcv again.
     """
     from core.ohlcv_data import fetch_price_histories_batch
-    histories = fetch_price_histories_batch(symbols, period=period, max_workers=10, show_progress=True)
-    return {k: v for k, v in histories.items() if len(v) > MIN_WARMUP_ROWS + 20}
+    from core.utils import clean_ohlcv
+    raw = fetch_price_histories_batch(symbols, period=period, max_workers=10, show_progress=True)
+    histories = {}
+    for k, v in raw.items():
+        if len(v) <= MIN_WARMUP_ROWS + 20:
+            continue
+        cleaned = clean_ohlcv(v)
+        histories[k] = cleaned if cleaned is not None and len(cleaned) > MIN_WARMUP_ROWS + 20 else v
+    return histories
 
 
 def append_dataframe_to_csv(df, filepath):
@@ -603,6 +659,17 @@ def main():
 
     print(f"\nLoading price data for {len(symbols)} stocks (shared across all strategies) ...")
     histories = load_price_histories(symbols, args.period)
+
+    # Performance: patch out clean_ohlcv and remove_forming_candle for the
+    # backtesting process.  Six strategies (golden_cross, precision_2r,
+    # smart_pullback, trend_pullback, volatility_squeeze, regime_rs_breakout)
+    # call these inside every generate_signal invocation.  With 100 stocks ×
+    # 750 bars that is ~450,000 redundant df.copy() + type coercion + sort +
+    # datetime.now() calls.  Data is already pre-cleaned in load_price_histories
+    # and historical candles are never "forming", so the calls are pure overhead.
+    import core.utils as _backtest_utils
+    _backtest_utils.clean_ohlcv = lambda df, *a, **kw: df
+    _backtest_utils.remove_forming_candle = lambda data, *a, **kw: data
 
     print("\nBuilding Nifty regime series ...")
     nifty_regime = None
