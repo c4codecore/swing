@@ -30,7 +30,7 @@ def tag_trades_with_regime(trades_df, regime_series):
     if trades_df.empty:
         return trades_df
 
-    trades_df = trades_df.copy()
+    trades_df = trades_df.drop(columns=["Regime"], errors="ignore").copy()
     # Normalize to seconds — ensures exact timestamp matching
     trades_df["EntryDate_DT"] = pd.to_datetime(trades_df["EntryDate"]).astype("datetime64[s]")
 

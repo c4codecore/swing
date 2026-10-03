@@ -7,6 +7,16 @@ and queries strategy modules to evaluate swing trading signals.
 from core.ohlcv_data import fetch_price_histories_batch
 
 
+MOMENTUM_LOOKBACK_DAYS = 60
+
+
+def trailing_return_pct(price_data, lookback=MOMENTUM_LOOKBACK_DAYS):
+    close = price_data["Close"]
+    if len(close) <= lookback:
+        return None
+    return round((float(close.iloc[-1]) / float(close.iloc[-1 - lookback]) - 1) * 100, 2)
+
+
 def screen_stocks(strategy_module, stock_universe, price_histories=None, max_workers=8):
     """
     Screens a universe of stock symbols against a given strategy module.
@@ -26,8 +36,10 @@ def screen_stocks(strategy_module, stock_universe, price_histories=None, max_wor
         if signal:
             signal["Ticker"] = symbol.replace(".NS", "")
             signal["Strategy"] = strategy_module.NAME
+            signal["Momentum60D"] = trailing_return_pct(price_data)
             signals.append(signal)
             print(f"  [MATCH] {signal['Ticker']:12s} Entry={signal.get('Entry')} "
                   f"SL={signal.get('StopLoss')} Target={signal.get('Target')}")
 
+    signals.sort(key=lambda item: item.get("Momentum60D") or float("-inf"), reverse=True)
     return signals

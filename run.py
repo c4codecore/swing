@@ -130,12 +130,8 @@ def save_watchlist(strategy_key, strategy_module, signals):
         watchlist_df.to_csv(output_path, mode="a", header=not file_exists, index=False)
         print(f"\nAppended to {output_path}")
 
-        # Sync to Google Sheets inside Google Drive folder (non-fatal — local CSV is already safely stored)
-        try:
-            from integrations.drive_sync import sync_csv_to_drive_sheet
-            sync_csv_to_drive_sheet(output_path)
-        except Exception:
-            append_to_sheet(watchlist_df)
+        # Sync to Google Sheets (non-fatal — local CSV is already safely stored)
+        append_to_sheet(watchlist_df)
     else:
         print(f"No stocks matched '{strategy_module.NAME}' today.")
     print("=" * 60)
@@ -165,17 +161,21 @@ def run_one(strategy_key, stock_universe, current_regime=None, price_histories=N
     save_watchlist(strategy_key, strategy_module, signals)
 
 
+def load_universe_and_regime():
+    stock_universe = get_stock_list()
+    print(f"\nLoading price histories for {len(stock_universe)} stocks ...")
+    price_histories = fetch_price_histories_batch(stock_universe, period="3y", max_workers=10)
+    current_regime = get_market_regime(price_histories=price_histories)
+    print_regime_banner(current_regime)
+    return stock_universe, price_histories, current_regime
+
+
 def run_all():
     """
     High-performance batch runner:
     Loads price data once for the universe, then evaluates all strategies in memory.
     """
-    current_regime = get_market_regime()
-    print_regime_banner(current_regime)
-
-    stock_universe = get_stock_list()
-    print(f"\nLoading price histories for {len(stock_universe)} stocks (shared across all strategies) ...")
-    price_histories = fetch_price_histories_batch(stock_universe, period="3y", max_workers=10)
+    stock_universe, price_histories, current_regime = load_universe_and_regime()
 
     for strategy_key in STRATEGIES:
         print("\n" + "#" * 60)
@@ -188,16 +188,12 @@ if __name__ == "__main__":
     print("\nReminder: This is a screening tool, not a buy/sell signal.")
 
     if len(sys.argv) > 1 and sys.argv[1] != "menu":
-        current_regime = get_market_regime()
-        print_regime_banner(current_regime)
-        stock_universe = get_stock_list()
-        run_one(sys.argv[1], stock_universe, current_regime)
+        stock_universe, price_histories, current_regime = load_universe_and_regime()
+        run_one(sys.argv[1], stock_universe, current_regime, price_histories)
     elif len(sys.argv) > 1 and sys.argv[1] == "menu":
         selected_key = show_menu()
         if selected_key:
-            current_regime = get_market_regime()
-            print_regime_banner(current_regime)
-            stock_universe = get_stock_list()
-            run_one(selected_key, stock_universe, current_regime)
+            stock_universe, price_histories, current_regime = load_universe_and_regime()
+            run_one(selected_key, stock_universe, current_regime, price_histories)
     else:
         run_all()
