@@ -32,6 +32,7 @@ import strategies
 from core.ohlcv_data import fetch_price_history, get_nifty50_symbols, get_nifty100_symbols
 from core.market_regime import compute_daily_regime, compute_market_breadth
 from core.screener import MOMENTUM_LOOKBACK_DAYS
+from core.trailing import chandelier_stop_levels
 from portfolio import simulate_portfolio
 from regime_split import tag_trades_with_regime, print_regime_breakdown, compute_regime_summary
 
@@ -174,6 +175,28 @@ def simulate_trade(price_data, entry_index, stoploss, target):
 # Per-Symbol Walk-Forward Loop
 # ---------------------------------------------------------------------------
 
+def simulate_trailing_trade(price_data, entry_index, initial_stop, atr_multiple, atr_period, max_hold_days):
+    opens = price_data["Open"].to_numpy(dtype=float)
+    lows = price_data["Low"].to_numpy(dtype=float)
+    closes = price_data["Close"].to_numpy(dtype=float)
+
+    stops, _ = chandelier_stop_levels(price_data, entry_index, initial_stop, atr_multiple, atr_period)
+    last = min(entry_index + max_hold_days - 1, len(price_data) - 1)
+
+    for day in range(entry_index, last + 1):
+        stop_in_force = float(stops[day])
+        if day > entry_index and opens[day] <= stop_in_force:
+            return day, float(opens[day]), "stop_gap"
+        if lows[day] <= stop_in_force:
+            reason = "stop_trailing" if stop_in_force > initial_stop else "stop"
+            return day, stop_in_force, reason
+
+    if last - entry_index + 1 < max_hold_days:
+        return last, float(closes[last]), "end_of_data"
+
+    return last, float(closes[last]), "time_exit"
+
+
 def trade_excursions(price_data, entry_index, exit_index, entry_price, risk_per_share):
     window = price_data.iloc[entry_index:exit_index + 1]
     lowest_low = float(window["Low"].min())
@@ -207,6 +230,7 @@ SIGNAL_WINDOW = 600
 
 def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_regime=None, target_rr=None):
     required_regime = getattr(strategy_module, "REQUIRED_REGIME", None)
+    is_trailing = getattr(strategy_module, "EXIT_MODE", "fixed") == "trailing"
     trades = []
     index = max(MIN_WARMUP_ROWS, len(price_data) - backtest_days)
     last_signal_index = len(price_data) - 2
@@ -251,7 +275,7 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             index += 1
             continue
 
-        target = signal_entry + planned_risk * target_rr if target_rr else float(signal["Target"])
+        target = signal_entry + planned_risk * target_rr if target_rr and not is_trailing else float(signal["Target"])
         planned_reward = target - signal_entry
         if planned_reward <= 0:
             index += 1
@@ -260,23 +284,36 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
         entry_index = index + 1
         actual_entry = float(price_data["Open"].iloc[entry_index])
 
-        if actual_entry <= stop or actual_entry >= target:
+        if actual_entry <= stop or (not is_trailing and actual_entry >= target):
             index += 1
             continue
 
         actual_risk = actual_entry - stop
         actual_reward = target - actual_entry
-        if actual_risk <= 0 or actual_reward <= 0:
+        if actual_risk <= 0 or (not is_trailing and actual_reward <= 0):
             index += 1
             continue
 
-        actual_rr = actual_reward / actual_risk
-        min_rr = float(getattr(strategy_module, "MIN_ACTUAL_RR", MIN_ACTUAL_RR))
-        if actual_rr < min_rr:
-            index += 1
-            continue
+        if is_trailing:
+            max_risk_expansion = float(getattr(strategy_module, "MAX_RISK_EXPANSION", 1.25))
+            if actual_risk > planned_risk * max_risk_expansion:
+                index += 1
+                continue
+            actual_rr = float("nan")
+            outcome = simulate_trailing_trade(
+                price_data, entry_index, stop,
+                float(strategy_module.TRAIL_ATR_MULTIPLE),
+                int(strategy_module.TRAIL_ATR_PERIOD),
+                int(strategy_module.MAX_HOLD_DAYS),
+            )
+        else:
+            actual_rr = actual_reward / actual_risk
+            min_rr = float(getattr(strategy_module, "MIN_ACTUAL_RR", MIN_ACTUAL_RR))
+            if actual_rr < min_rr:
+                index += 1
+                continue
+            outcome = simulate_trade(price_data, entry_index, stop, target)
 
-        outcome = simulate_trade(price_data, entry_index, stop, target)
         if outcome is None:
             index += 1
             continue
@@ -298,15 +335,15 @@ def backtest_symbol(strategy_module, symbol, price_data, backtest_days, nifty_re
             "EntryPrice": round(actual_entry, 2),
             "GapPct": round((actual_entry / signal_entry - 1) * 100, 2),
             "StopLoss": round(stop, 2),
-            "Target": round(target, 2),
-            "PlannedRR": round(planned_reward / planned_risk, 2),
-            "ActualRR": round(actual_rr, 2),
+            "Target": float("nan") if is_trailing else round(target, 2),
+            "PlannedRR": float("nan") if is_trailing else round(planned_reward / planned_risk, 2),
+            "ActualRR": float("nan") if is_trailing else round(actual_rr, 2),
             "ExitDate": price_data.index[exit_index].strftime("%Y-%m-%d"),
             "ExitPrice": round(exit_price, 2),
             "ExitReason": reason,
             "HoldingDays": exit_index - entry_index + 1,
             "RiskPerShare": round(actual_risk, 2),
-            "RewardPerShare": round(actual_reward, 2),
+            "RewardPerShare": float("nan") if is_trailing else round(actual_reward, 2),
             "ReturnPct": round(pnl / actual_entry * 100, 2),
             "RMultiple": round(pnl / actual_risk, 2),
             "PlannedRMultiple": round(pnl / planned_risk, 2),

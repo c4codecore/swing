@@ -24,7 +24,7 @@ import importlib
 import pandas as pd
 from datetime import datetime
 
-from core.ohlcv_data import get_nifty50_symbols, get_nifty100_symbols, get_all_nse_symbols, fetch_price_histories_batch
+from core.ohlcv_data import get_nifty50_symbols, get_nifty100_symbols, get_all_nse_symbols, fetch_price_histories_batch, fetch_price_history
 from core.screener import screen_stocks
 from core.market_regime import get_market_regime, print_regime_banner
 from integrations.gsheets import append_to_sheet
@@ -211,6 +211,38 @@ def run_consensus(stock_universe, current_regime, price_histories):
     print("=" * 60)
 
 
+TRAILING_STRATEGY_KEY = "donchian_trend"
+
+
+def run_trail(symbol, entry_date, initial_stop):
+    strategy_module = STRATEGIES.get(TRAILING_STRATEGY_KEY)
+    if strategy_module is None:
+        print(f"Strategy '{TRAILING_STRATEGY_KEY}' not found.")
+        return
+
+    ticker = symbol.upper()
+    if not ticker.endswith(".NS"):
+        ticker += ".NS"
+    price_data = fetch_price_history(ticker, period="1y")
+    if price_data is None:
+        print(f"Could not download price data for {ticker}.")
+        return
+
+    result = strategy_module.manage_open_position(
+        price_data, pd.Timestamp(entry_date), float(initial_stop))
+    if result is None:
+        print(f"Entry date {entry_date} is not inside the downloaded price history.")
+        return
+
+    print("\n" + "=" * 60)
+    print(f"Open position check: {ticker} (entered {entry_date}, initial stop {initial_stop})")
+    print("=" * 60)
+    for label, value in result.items():
+        print(f"  {label:<24} {value}")
+    print("=" * 60)
+    print("Move your stop-loss order to 'StopForTomorrow' (never lower it).")
+
+
 def load_universe_and_regime():
     stock_universe = get_stock_list()
     print(f"\nLoading price histories for {len(stock_universe)} stocks ...")
@@ -237,7 +269,9 @@ def run_all():
 if __name__ == "__main__":
     print("\nReminder: This is a screening tool, not a buy/sell signal.")
 
-    if len(sys.argv) > 1 and sys.argv[1] == "consensus":
+    if len(sys.argv) == 5 and sys.argv[1] == "trail":
+        run_trail(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif len(sys.argv) > 1 and sys.argv[1] == "consensus":
         stock_universe, price_histories, current_regime = load_universe_and_regime()
         run_consensus(stock_universe, current_regime, price_histories)
     elif len(sys.argv) > 1 and sys.argv[1] != "menu":
