@@ -660,17 +660,6 @@ def main():
     print(f"\nLoading price data for {len(symbols)} stocks (shared across all strategies) ...")
     histories = load_price_histories(symbols, args.period)
 
-    # Performance: patch out clean_ohlcv and remove_forming_candle for the
-    # backtesting process.  Six strategies (golden_cross, precision_2r,
-    # smart_pullback, trend_pullback, volatility_squeeze, regime_rs_breakout)
-    # call these inside every generate_signal invocation.  With 100 stocks ×
-    # 750 bars that is ~450,000 redundant df.copy() + type coercion + sort +
-    # datetime.now() calls.  Data is already pre-cleaned in load_price_histories
-    # and historical candles are never "forming", so the calls are pure overhead.
-    import core.utils as _backtest_utils
-    _backtest_utils.clean_ohlcv = lambda df, *a, **kw: df
-    _backtest_utils.remove_forming_candle = lambda data, *a, **kw: data
-
     print("\nBuilding Nifty regime series ...")
     nifty_regime = None
     try:
@@ -692,12 +681,26 @@ def main():
         print("Stopping instead of silently running them on every market day. Check the network and rerun.")
         return
 
+    import time
     for _, strategy_module in selected.items():
         print(f"\nBacktesting {strategy_module.NAME} ...")
+        
+        # Performance: apply monkey-patch directly to the strategy module's namespace
+        # because 'from core.utils import clean_ohlcv' binds locally in each strategy.
+        if hasattr(strategy_module, "clean_ohlcv"):
+            strategy_module.clean_ohlcv = lambda df, *a, **kw: df
+        if hasattr(strategy_module, "remove_forming_candle"):
+            strategy_module.remove_forming_candle = lambda data, *a, **kw: data
+
         req = getattr(strategy_module, "REQUIRED_REGIME", None)
         if req:
             print(f"  (Regime filter active: only '{req}' days counted)")
+        
+        start_time = time.time()
         trades_df = run_backtest(strategy_module, histories, args.days, nifty_regime, args.force_rr)
+        elapsed = time.time() - start_time
+        print(f"  -> Completed in {elapsed:.2f} seconds")
+        
         trades_df = apply_daily_cap(trades_df, args.max_per_day)
         summaries.append(summarize(strategy_module.NAME, trades_df))
         if not trades_df.empty:

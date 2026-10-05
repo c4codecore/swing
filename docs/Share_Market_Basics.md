@@ -1,8 +1,5 @@
-# Share Market Seekhna Hai
-### Basics se Swing Trading Strategies Tak
-*Family Learning Notes*
+# Technical analysis par based systematic swing trading, backtesting ke saath.
 
-`BASICS` &nbsp; `RISK MANAGEMENT` &nbsp; `5 STRATEGIES` &nbsp; `INDICATORS` &nbsp; `GLOSSARY`
 
 ---
 

@@ -1,4 +1,4 @@
-Google Drive Outputs Folder & Google Sheets (Last Synced: 2026-10-03 10:06:43)
+Google Drive Outputs Folder & Google Sheets (Last Synced: 2026-10-04 05:37:09)
 ================================================================================
 
 Main Drive Folder:
@@ -8,6 +8,8 @@ Individual Google Sheets:
 --------------------------------------------------------------------------------
 - Backtest Monthly Breakdown (backtest_monthly.csv):
   https://docs.google.com/spreadsheets/d/1jgTAtAXsTBkJDvmLHy0SlyyAf1yqfi1Cb4qZDmzmFKE/edit?usp=drivesdk
+- Backtest Portfolio Summary (backtest_portfolio_summary.csv):
+  https://docs.google.com/spreadsheets/d/1nt2lT4VfVrVfPwsRSmq9tS-_gAeoZ4xrTZElIEnrQ0Y/edit?usp=drivesdk
 - Backtest Regime Summary (backtest_regime_summary.csv):
   https://docs.google.com/spreadsheets/d/1ZCILaMtUw_3QbM7C0-tjTX1p1eiKEXa33ShN_Cqf_48/edit?usp=drivesdk
 - Backtest Summary (backtest_summary.csv):
