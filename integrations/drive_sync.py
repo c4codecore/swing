@@ -24,6 +24,11 @@ except ImportError:
     MediaFileUpload = None
 
 from integrations.gsheets import _get_credentials
+from core.ui import (
+    banner_box, badge_success, badge_error, badge_warn, badge_info,
+    badge_drive, badge_sheets, bright_cyan, bright_yellow, bright_green,
+    bright_red, bright_white, bright_magenta, dim, divider, key_val
+)
 
 # Project root directory
 _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -90,7 +95,7 @@ def get_or_create_drive_folder(drive_service, folder_name=DEFAULT_DRIVE_FOLDER_N
         ).execute()
         folder_id = folder["id"]
         folder_url = folder.get("webViewLink", f"https://drive.google.com/drive/folders/{folder_id}")
-        print(f"[Drive] Created Google Drive folder: '{folder_name}'")
+        print(f"  {badge_drive('Created')} Google Drive folder: '{bright_yellow(folder_name)}'")
 
     os.makedirs(_OUTPUTS_DIR, exist_ok=True)
     with open(_FOLDER_ID_FILE, "w", encoding="utf-8") as f:
@@ -183,11 +188,11 @@ def sync_csv_to_drive_sheet(csv_path, drive_service=None, sheets_service=None, f
     Syncs a local CSV file into its corresponding Google Sheet inside the Drive folder.
     """
     if not os.path.exists(csv_path):
-        print(f"[!] File not found: {csv_path}")
+        print(f"  {badge_error('File')} File not found: {bright_yellow(csv_path)}")
         return None
 
     if build is None:
-        print("[!] Google API client library not available. Skipping Google Drive sync.")
+        print(f"  {badge_warn('Google API')} Client libraries not available. Skipping Google Drive sync.")
         return None
 
     filename = os.path.basename(csv_path)
@@ -252,7 +257,7 @@ def sync_csv_to_drive_sheet(csv_path, drive_service=None, sheets_service=None, f
         if is_new:
             _format_sheet_header(sheets_service, sheet_id)
 
-        print(f"  [Synced] {filename:<32} -> {sheet_title} ({len(rows_data)-1} rows)")
+        print(f"  {badge_success('Synced')} {bright_cyan(f'{filename:<32}')} -> {bright_yellow(sheet_title)} {dim(f'({len(rows_data)-1} rows)')}")
         return {
             "filename": filename,
             "title": sheet_title,
@@ -262,7 +267,7 @@ def sync_csv_to_drive_sheet(csv_path, drive_service=None, sheets_service=None, f
         }
 
     except Exception as e:
-        print(f"  [Error] Failed syncing {filename}: {e}")
+        print(f"  {badge_error('Sync')} Failed syncing {bright_yellow(filename)}: {dim(str(e))}")
         return None
 
 
@@ -271,29 +276,30 @@ def sync_all_outputs(outputs_dir=_OUTPUTS_DIR, folder_name=DEFAULT_DRIVE_FOLDER_
     Syncs all CSV files in outputs/ directory to Google Drive folder as Google Sheets.
     """
     if build is None:
-        print("[!] Google API libraries not installed. Skipping Google Drive sync.")
+        print(f"\n  {badge_warn('Google API')} Libraries not installed. Skipping Google Drive sync.\n")
         return None
 
     if not os.path.exists(outputs_dir):
-        print(f"[!] Outputs directory '{outputs_dir}' does not exist.")
+        print(f"\n  {badge_error('Path')} Outputs directory '{bright_yellow(outputs_dir)}' does not exist.\n")
         return None
 
     csv_files = sorted(glob.glob(os.path.join(outputs_dir, "*.csv")))
     if not csv_files:
-        print("[!] No CSV files found in outputs/ directory.")
+        print(f"\n  {badge_info('Empty')} No CSV files found in {bright_yellow(outputs_dir)}.\n")
         return None
 
-    print("\n" + "=" * 70)
-    print(f"Google Drive & Google Sheets Sync: '{folder_name}'")
-    print("=" * 70)
+    print(banner_box("GOOGLE DRIVE & GOOGLE SHEETS SYNC",
+                     subtitle=f"Target Drive Folder: '{folder_name}'",
+                     width=70))
 
     creds = _get_credentials()
     drive_service = build("drive", "v3", credentials=creds)
     sheets_service = build("sheets", "v4", credentials=creds)
 
     folder_id, folder_url = get_or_create_drive_folder(drive_service, folder_name)
-    print(f"Drive Folder: {folder_name}")
-    print(f"Folder URL:   {folder_url}\n")
+    print(key_val("Drive Folder:", folder_name, val_color=bright_yellow))
+    print(key_val("Folder URL:", folder_url, val_color=bright_cyan))
+    print()
 
     synced_items = []
     for csv_file in csv_files:
@@ -318,11 +324,11 @@ def sync_all_outputs(outputs_dir=_OUTPUTS_DIR, folder_name=DEFAULT_DRIVE_FOLDER_
         for item in synced_items:
             f.write(f"- {item['title']} ({item['filename']}):\n  {item['url']}\n")
 
-    print("\n" + "-" * 70)
-    print(f"Sync complete! {len(synced_items)} file(s) updated in Google Drive.")
-    print(f"Drive Folder URL: {folder_url}")
-    print(f"Full links list saved to: outputs/drive_sync_urls.txt")
-    print("=" * 70 + "\n")
+    print(f"\n  {divider(66)}")
+    print(f"  {badge_success('Complete')} {bright_green(str(len(synced_items)))} file(s) updated in Google Drive.")
+    print(f"  {key_val('Drive Folder URL:', folder_url, val_color=bright_cyan)}")
+    print(f"  {dim('Full links saved to: outputs/drive_sync_urls.txt')}")
+    print(f"  {divider(66)}\n")
 
     return {
         "folder_url": folder_url,
@@ -336,11 +342,13 @@ def watch_outputs(outputs_dir=_OUTPUTS_DIR, folder_name=DEFAULT_DRIVE_FOLDER_NAM
     Watches the outputs directory and automatically syncs to Google Drive whenever
     any CSV file is modified or newly added.
     """
-    print("\n" + "=" * 70)
-    print(f"Starting real-time file watcher on: {outputs_dir}")
-    print(f"Syncing target Google Drive folder: '{folder_name}'")
-    print(f"Polling interval: {poll_interval} seconds. Press Ctrl+C to stop.")
-    print("=" * 70)
+    print(banner_box("REAL-TIME GOOGLE DRIVE OUTPUT WATCHER",
+                     subtitle=[
+                         f"Watching directory: {outputs_dir}",
+                         f"Target Drive Folder: '{folder_name}'",
+                         f"Polling interval: {poll_interval}s. Press Ctrl+C to stop."
+                     ],
+                     width=70))
 
     # Initial sync
     sync_all_outputs(outputs_dir=outputs_dir, folder_name=folder_name)
@@ -363,11 +371,11 @@ def watch_outputs(outputs_dir=_OUTPUTS_DIR, folder_name=DEFAULT_DRIVE_FOLDER_NAM
 
             if changed:
                 now_str = datetime.now().strftime("%H:%M:%S")
-                print(f"\n[{now_str}] Changes detected in outputs/. Syncing to Google Drive...")
+                print(f"\n  {bright_magenta(f'[{now_str}]')} {bright_yellow('Changes detected in outputs/. Syncing to Google Drive...')}")
                 sync_all_outputs(outputs_dir=outputs_dir, folder_name=folder_name)
 
     except KeyboardInterrupt:
-        print("\nWatcher stopped.")
+        print(f"\n  {badge_info('Watcher')} Stopped by user.\n")
 
 
 if __name__ == "__main__":

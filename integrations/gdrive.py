@@ -17,8 +17,13 @@ def upload_or_update_file(local_filepath, as_google_doc=True):
     """
     Uploads or updates a local markdown file on Google Drive.
     """
+    from core.ui import (
+        badge_drive, badge_error, bright_cyan, bright_yellow,
+        bright_green, bright_white, dim, key_val
+    )
+
     if not os.path.exists(local_filepath):
-        print(f"[!] Local file not found: {local_filepath}")
+        print(f"  {badge_error('File')} Local file not found: {bright_yellow(local_filepath)}")
         return None
 
     filename = os.path.basename(local_filepath)
@@ -54,7 +59,7 @@ def upload_or_update_file(local_filepath, as_google_doc=True):
     media = MediaFileUpload(local_filepath, mimetype="text/markdown", resumable=True)
 
     if existing_file_id:
-        print(f"Updating existing file on Google Drive (ID: {existing_file_id}) ...")
+        print(f"  {bright_cyan('Drive:')} Updating existing file on Google Drive {dim(f'(ID: {existing_file_id})')} ...")
         updated_file = drive_service.files().update(
             fileId=existing_file_id,
             media_body=media,
@@ -63,7 +68,7 @@ def upload_or_update_file(local_filepath, as_google_doc=True):
         web_link = updated_file.get("webViewLink")
         file_id = updated_file.get("id")
     else:
-        print(f"Uploading new file to Google Drive: {filename} ...")
+        print(f"  {bright_cyan('Drive:')} Uploading new file to Google Drive: {bright_yellow(filename)} ...")
         file_metadata = {"name": filename}
         if as_google_doc:
             file_metadata["mimeType"] = "application/vnd.google-apps.document"
@@ -84,6 +89,6 @@ def upload_or_update_file(local_filepath, as_google_doc=True):
     with open(_DRIVE_DOC_URL_FILE, "w", encoding="utf-8") as f:
         f.write(web_link or "")
 
-    print(f"\nSuccessfully uploaded/updated on Google Drive!")
-    print(f"URL: {web_link}\n")
+    print(f"\n  {badge_drive('Success')} Successfully uploaded/updated on Google Drive!")
+    print(f"  {bright_cyan('Doc URL:')} {bright_yellow(web_link)}\n")
     return web_link

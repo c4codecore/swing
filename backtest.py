@@ -33,6 +33,12 @@ from core.ohlcv_data import fetch_price_history, get_nifty50_symbols, get_nifty1
 from core.market_regime import compute_daily_regime, compute_market_breadth
 from core.screener import MOMENTUM_LOOKBACK_DAYS
 from core.trailing import chandelier_stop_levels
+from core.ui import (
+    Fore, Style, banner_box, header, sub_header, divider,
+    badge_success, badge_error, badge_warn, badge_info, badge_match,
+    bright_cyan, bright_yellow, bright_green, bright_red,
+    bright_white, bright_magenta, dim, render_table, format_pct
+)
 from portfolio import simulate_portfolio
 from regime_split import tag_trades_with_regime, print_regime_breakdown, compute_regime_summary
 
@@ -590,17 +596,22 @@ def parse_arguments():
 
 
 def print_excursion_report(trade_frames):
-    print("\nStop and target diagnostics (MAE/MFE in R multiples):")
-    print("-" * 110)
+    print(banner_box("STOP & TARGET DIAGNOSTICS (MAE/MFE in R Multiples)", width=100))
     for trades_df in trade_frames:
         name = trades_df["Strategy"].iloc[0]
         stopped = trades_df[trades_df["ExitReason"].str.startswith("stop")]
         timed = trades_df[trades_df["ExitReason"] == "time_exit"]
         reached_one_r = (stopped["MfeR"] >= 1.0).mean() * 100 if len(stopped) else 0.0
         median_mae_winners = trades_df[trades_df["ReturnPct"] > 0]["MaeR"].median()
-        print(f"  {name:<30} stopped={len(stopped):>4}  stopped-but-reached-1R={reached_one_r:>5.1f}%  "
-              f"median MAE of winners={median_mae_winners:>5.2f}R  "
-              f"time-exit median MFE={timed['MfeR'].median() if len(timed) else float('nan'):>5.2f}R")
+        time_mfe = timed["MfeR"].median() if len(timed) else float("nan")
+
+        name_str = f"{Fore.LIGHTYELLOW_EX}{Style.BRIGHT}{name:<28}{Style.RESET_ALL}"
+        stopped_str = f"stopped={bright_red(f'{len(stopped):>4}')}"
+        r1_color = bright_yellow if reached_one_r > 30 else bright_green
+        reached_str = f"reached-1R={r1_color(f'{reached_one_r:>5.1f}%')}"
+        mae_str = f"med-MAE-winners={bright_cyan(f'{median_mae_winners:>5.2f}R')}"
+        mfe_str = f"time-exit-med-MFE={bright_green(f'{time_mfe:>5.2f}R')}"
+        print(f"  {name_str}  {stopped_str}  {reached_str}  {mae_str}  {mfe_str}")
 
 
 def print_confluence_report(trade_frames):
@@ -608,26 +619,34 @@ def print_confluence_report(trade_frames):
     if all_trades["Strategy"].nunique() < 2:
         return
     strategies_per_signal = all_trades.groupby(["Stock", "SignalDate"])["Strategy"].transform("nunique")
-    print("\nConfluence check (same stock, same signal day, fired by several strategies):")
-    print("-" * 110)
+    print(banner_box("MULTI-STRATEGY CONFLUENCE REPORT (Signals Fired by Multiple Strategies Concurrently)", width=100))
     for label, subset in (
-        ("fired by 1 strategy", all_trades[strategies_per_signal == 1]),
-        ("fired by 2+ strategies", all_trades[strategies_per_signal >= 2]),
+        ("Fired by 1 strategy", all_trades[strategies_per_signal == 1]),
+        ("Fired by 2+ strategies", all_trades[strategies_per_signal >= 2]),
     ):
         if subset.empty:
             continue
         wins = subset[subset["ReturnPct"] > 0]["ReturnPct"].sum()
         losses = abs(subset[subset["ReturnPct"] <= 0]["ReturnPct"].sum())
         profit_factor = round(wins / losses, 2) if losses else float("inf")
-        print(f"  {label:<24} Trades={len(subset):>5}  WinRate%={(subset['ReturnPct'] > 0).mean() * 100:>5.1f}  "
-              f"Expectancy%={subset['ReturnPct'].mean():>6.2f}  ProfitFactor={profit_factor:>5}")
+        winrate = (subset["ReturnPct"] > 0).mean() * 100
+        exp = subset["ReturnPct"].mean()
+
+        lbl_str = f"{bright_cyan(f'{label:<24}')}"
+        trades_str = f"Trades={bright_white(f'{len(subset):>5}')}"
+        wr_color = bright_green if winrate >= 50 else bright_red
+        wr_str = f"WinRate%={wr_color(f'{winrate:>5.1f}')}"
+        exp_color = bright_green if exp > 0 else bright_red
+        exp_str = f"Expectancy%={exp_color(f'{exp:>6.2f}')}"
+        pf_color = bright_green if profit_factor >= 1.5 else (bright_yellow if profit_factor >= 1.0 else bright_red)
+        pf_str = f"ProfitFactor={pf_color(f'{profit_factor:>5}')}"
+        print(f"  {lbl_str}  {trades_str}  {wr_str}  {exp_str}  {pf_str}")
 
 
 def print_portfolio_report(trade_frames, args):
-    print("\nPortfolio simulation "
-          f"(capital {args.capital:,.0f}, risk {args.risk_pct}% per trade, max {args.max_positions} positions, "
-          "ranked by 60-day momentum):")
-    print("-" * 110)
+    print(banner_box("PORTFOLIO SIMULATION",
+                     subtitle=f"Starting Capital: Rs {args.capital:,.0f} | Risk: {args.risk_pct}% per trade | Max Positions: {args.max_positions} | Ranking: 60D Momentum",
+                     width=100))
     rows = []
     for trades_df in trade_frames:
         summary, equity_curve = simulate_portfolio(
@@ -639,13 +658,12 @@ def print_portfolio_report(trade_frames, args):
     if not rows:
         return None
     portfolio_summary = pd.concat(rows, ignore_index=True)
-    print(portfolio_summary.to_string(index=False))
+    print(render_table(portfolio_summary))
     return portfolio_summary
 
 
 def print_in_and_out_of_sample(trade_frames):
-    print("\nIn-sample (older signals) vs out-of-sample (most recent signals):")
-    print("-" * 110)
+    print(banner_box("IN-SAMPLE (Older Signals) vs OUT-OF-SAMPLE (Recent Signals)", width=100))
     for trades_df in trade_frames:
         name = trades_df["Strategy"].iloc[0]
         in_sample, out_of_sample = split_in_and_out_of_sample(trades_df)
@@ -653,8 +671,20 @@ def print_in_and_out_of_sample(trade_frames):
             if part.empty:
                 continue
             row = summarize(name, part)
-            print(f"  {name:<30} {label} Trades={row['Trades']:>4}  WinRate%={row['WinRate%']:>5}  "
-                  f"Expectancy%={row['Expectancy%']:>6}  ProfitFactor={row['ProfitFactor']:>5}")
+            name_str = f"{Fore.LIGHTYELLOW_EX}{Style.BRIGHT}{name:<28}{Style.RESET_ALL}"
+            lbl_str = f"{bright_cyan(label)}"
+            trades_count = row["Trades"]
+            t_str = f"Trades={bright_white(f'{trades_count:>4}')}"
+            wr_val = row["WinRate%"]
+            wr_color = bright_green if wr_val >= 50 else bright_red
+            wr_str = f"WinRate%={wr_color(f'{wr_val:>5}')}"
+            exp_val = row["Expectancy%"]
+            exp_color = bright_green if exp_val > 0 else bright_red
+            exp_str = f"Expectancy%={exp_color(f'{exp_val:>6}')}"
+            pf_val = row["ProfitFactor"]
+            pf_color = bright_green if pf_val >= 1.5 else (bright_yellow if pf_val >= 1.0 else bright_red)
+            pf_str = f"ProfitFactor={pf_color(f'{pf_val:>5}')}"
+            print(f"  {name_str} {lbl_str}  {t_str}  {wr_str}  {exp_str}  {pf_str}")
 
 
 def main():
@@ -674,8 +704,12 @@ def main():
     elif args.strategy in available:
         selected = {args.strategy: available[args.strategy]}
     else:
-        print(f"Unknown strategy '{args.strategy}'. Available: {list(available.keys())}")
+        print(f"\n  {badge_error('Strategy')} Unknown strategy '{bright_yellow(args.strategy)}'. Available: {list(available.keys())}\n")
         return
+
+    print(banner_box("SWING TRADING SYSTEM - STRATEGY BACKTESTER",
+                     subtitle=f"Strategy: {args.strategy} | Universe: {args.universe} | Test Days: {args.days} | Max Hold: {MAX_HOLD_DAYS}d | Cost: {ROUND_TRIP_COST_PCT}%",
+                     width=100))
 
     if args.baseline:
         selected["baseline_random"] = RandomEntryBaseline("Baseline: Random Entry", uptrend_only=False)
@@ -694,10 +728,10 @@ def main():
     run_date = now.strftime("%Y-%m-%d")
     run_time = now.strftime("%H:%M:%S")
 
-    print(f"\nLoading price data for {len(symbols)} stocks (shared across all strategies) ...")
+    print(f"\n  {bright_cyan('Universe:')} Loading price data for {bright_yellow(str(len(symbols)))} stocks (shared across all strategies) ...")
     histories = load_price_histories(symbols, args.period)
 
-    print("\nBuilding Nifty regime series ...")
+    print(f"\n  {bright_cyan('Regime:')} Building Nifty regime series ...")
     nifty_regime = None
     try:
         nifty_data = fetch_price_history("^NSEI", period=args.period)
@@ -706,21 +740,21 @@ def main():
             nifty_regime = compute_daily_regime(nifty_data, breadth)
             nifty_regime.index = pd.to_datetime(nifty_regime.index).normalize()
             counts = nifty_regime.tail(args.days).value_counts().to_dict()
-            print(f"  Regime mode: {args.regime}. Days in test window: {counts}")
+            print(f"  {bright_white('Regime mode:')} {bright_yellow(args.regime)}. Days in test window: {Fore.LIGHTMAGENTA_EX}{counts}{Style.RESET_ALL}")
     except Exception as e:
-        print(f"  [!] Could not build Nifty regime: {e}")
+        print(f"  {badge_warn('Regime')} Could not build Nifty regime: {dim(str(e))}")
 
     needs_regime = [m.NAME for m in selected.values() if getattr(m, "REQUIRED_REGIME", None)]
     if needs_regime and nifty_regime is None:
-        print("\n[ERROR] Nifty regime data is unavailable, but these strategies need it:")
+        print(f"\n  {badge_error('Regime')} Nifty regime data is unavailable, but these strategies need it:")
         for name in needs_regime:
-            print(f"  - {name}")
-        print("Stopping instead of silently running them on every market day. Check the network and rerun.")
+            print(f"    - {bright_yellow(name)}")
+        print("  Stopping instead of silently running them on every market day. Check the network and rerun.\n")
         return
 
     import time
     for _, strategy_module in selected.items():
-        print(f"\nBacktesting {strategy_module.NAME} ...")
+        print(f"\n  {bright_cyan('Backtesting')} {Fore.LIGHTMAGENTA_EX}{Style.BRIGHT}{strategy_module.NAME}{Style.RESET_ALL} ...")
         
         # Performance: apply monkey-patch directly to the strategy module's namespace
         # because 'from core.utils import clean_ohlcv' binds locally in each strategy.
@@ -731,12 +765,13 @@ def main():
 
         req = getattr(strategy_module, "REQUIRED_REGIME", None)
         if req:
-            print(f"  (Regime filter active: only '{req}' days counted)")
+            regime_note = f"(Regime filter active: only '{req}' days counted)"
+            print(f"    {dim(regime_note)}")
         
         start_time = time.time()
         trades_df = run_backtest(strategy_module, histories, args.days, nifty_regime, args.force_rr)
         elapsed = time.time() - start_time
-        print(f"  -> Completed in {elapsed:.2f} seconds")
+        print(f"    {bright_green('Completed')} in {bright_white(f'{elapsed:.2f}')} seconds")
         
         trades_df = apply_daily_cap(trades_df, args.max_per_day)
         summaries.append(summarize(strategy_module.NAME, trades_df))
@@ -745,20 +780,18 @@ def main():
 
     summary_df = pd.DataFrame(summaries)
 
-    print("\n" + "=" * 110)
-    print(f"Backtest: last {args.days} trading days, {len(symbols)} stocks, "
-          f"max hold {MAX_HOLD_DAYS} days, cost {ROUND_TRIP_COST_PCT}% round trip, "
-          f"min actual RR {MIN_ACTUAL_RR}")
-    print("=" * 110)
+    print(banner_box("BACKTEST PERFORMANCE SUMMARY",
+                     subtitle=f"Last {args.days} trading days | {len(symbols)} stocks | Max hold {MAX_HOLD_DAYS}d | Cost {ROUND_TRIP_COST_PCT}% | Min RR {MIN_ACTUAL_RR}",
+                     width=100))
     if not summary_df.empty:
-        print(summary_df.to_string(index=False))
+        print(render_table(summary_df))
 
     for row in summaries:
         if row["Trades"] < MIN_TRADES_FOR_CONFIDENCE:
-            print(f"\n[!] {row['Strategy']}: only {row['Trades']} trades — sample too small to trust.")
+            print(f"\n  {badge_warn('Sample Size')} {bright_yellow(row['Strategy'])}: only {row['Trades']} trades - sample too small to trust.")
         elif row.get("Exp%CI95Low") is not None and row["Exp%CI95Low"] <= 0:
-            print(f"\n[!] {row['Strategy']}: expectancy 95% CI includes zero "
-                  f"({row['Exp%CI95Low']}% to {row['Exp%CI95High']}%) — edge not statistically proven.")
+            print(f"\n  {badge_warn('Statistical Edge')} {bright_yellow(row['Strategy'])}: expectancy 95% CI includes zero "
+                  f"({row['Exp%CI95Low']}% to {row['Exp%CI95High']}%) - edge not statistically proven.")
 
     print_in_and_out_of_sample(trade_frames)
     portfolio_summary = None
@@ -767,12 +800,11 @@ def main():
         print_confluence_report(trade_frames)
         portfolio_summary = print_portfolio_report(trade_frames, args)
 
-    print("\nNote: today's index constituents are used for the whole period (survivorship bias),")
-    print("so real results are usually somewhat worse than this.")
+    bias_note = "Note: today's index constituents are used for the whole period (survivorship bias), so live performance may vary."
+    print(f"\n  {dim(bias_note)}")
 
     if args.baseline:
-        print("\nA strategy is only interesting if it clearly beats the 'Baseline' rows")
-        print("(especially 'Random (Close > SMA200)') on Expectancy%, AvgR and ProfitFactor.")
+        print(f"  {bright_cyan('A strategy is only interesting if it clearly beats the \"Baseline\" rows on Expectancy%, AvgR, and ProfitFactor.')}\n")
 
     # ---------------------------------------------------------------------------
     # Persistent Saving (Append with Date & Time)
@@ -823,9 +855,7 @@ def main():
         # 3. Automatic Regime Split Execution
         # -----------------------------------------------------------------------
         if nifty_regime is not None:
-            print("\n" + "=" * 70)
-            print("AUTOMATIC MARKET REGIME BREAKDOWN ANALYSIS")
-            print("=" * 70)
+            print(banner_box("AUTOMATIC MARKET REGIME BREAKDOWN ANALYSIS", width=80))
             tagged_trades = tag_trades_with_regime(all_trades, nifty_regime)
             print_regime_breakdown(tagged_trades)
 
@@ -847,21 +877,25 @@ def main():
         portfolio_to_save.insert(1, "RunTime", run_time)
         append_dataframe_to_csv(portfolio_to_save, os.path.join(output_dir, "backtest_portfolio_summary.csv"))
 
-    print(f"\nAppended backtest results to {output_dir}:")
-    print("  backtest_summary.csv             — Cumulative per-strategy summaries with timestamps")
-    print("  backtest_trades.csv              — All simulated individual trade logs")
-    print("  backtest_trades_with_regime.csv  — Trades tagged with Bullish/Neutral/Bearish regime")
-    print("  backtest_regime_summary.csv      — Performance breakdown by market regime")
-    print("  backtest_yearly.csv              — Year-by-year performance")
-    print("  backtest_monthly.csv             — Month-by-month performance")
-    print("  backtest_portfolio_summary.csv   — Capital-limited portfolio simulation per strategy")
+    print(banner_box("PERSISTENT EXPORT ARTIFACTS", subtitle=f"Appended backtest results to: {output_dir}", width=80))
+    artifacts = [
+        ("backtest_summary.csv", "Cumulative per-strategy summaries with timestamps"),
+        ("backtest_trades.csv", "All simulated individual trade logs"),
+        ("backtest_trades_with_regime.csv", "Trades tagged with Bullish/Neutral/Bearish regime"),
+        ("backtest_regime_summary.csv", "Performance breakdown by market regime"),
+        ("backtest_yearly.csv", "Year-by-year performance"),
+        ("backtest_monthly.csv", "Month-by-month performance"),
+        ("backtest_portfolio_summary.csv", "Capital-limited portfolio simulation per strategy"),
+    ]
+    for filename, desc in artifacts:
+        print(f"  {bright_cyan(f'{filename:<34}')} {dim(desc)}")
 
     # Auto-sync all results to Google Drive folder
     try:
         from integrations.drive_sync import sync_all_outputs
         sync_all_outputs()
     except Exception as e:
-        print(f"\n[Google Drive] Sync skipped: {e}")
+        print(f"\n  {badge_warn('Google Drive')} Sync skipped: {dim(str(e))}")
 
 
 if __name__ == "__main__":

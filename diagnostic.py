@@ -16,6 +16,11 @@ import argparse
 from collections import Counter
 
 from core.ohlcv_data import fetch_price_history, get_nifty50_symbols, get_nifty100_symbols
+from core.ui import (
+    banner_box, badge_success, badge_error, badge_warn, badge_info,
+    bright_cyan, bright_yellow, bright_green, bright_red,
+    bright_white, dim, Fore, Style
+)
 from run import discover_strategies
 
 
@@ -31,8 +36,8 @@ def load_price_histories(symbols, period):
         price_data = fetch_price_history(symbol, period=period)
         if price_data is not None and len(price_data) > MIN_WARMUP_ROWS + 20:
             histories[symbol] = price_data
-        print(f"  Downloaded {position}/{len(symbols)}: {symbol}", end="\r")
-    print(f"\nUsable history for {len(histories)} of {len(symbols)} stocks.\n")
+        print(f"  {bright_cyan('Downloaded:')} {bright_yellow(str(position))}/{len(symbols)}: {bright_white(symbol)}", end="\r")
+    print(f"\n  {badge_success('History')} Usable history ready for {bright_green(str(len(histories)))} of {len(symbols)} stocks.\n")
     return histories
 
 
@@ -68,24 +73,34 @@ def measure_funnel(strategy_module, price_histories, days):
 
 
 def print_funnel(strategy_name, filter_names, checks, passed_alone, passed_cumulative, errors):
-    print("\n" + "=" * 80)
-    print(f"{strategy_name}  ({checks:,} stock-days checked)")
-    print("=" * 80)
+    print(banner_box(f"FILTER FUNNEL: {strategy_name}",
+                     subtitle=f"{checks:,} stock-days evaluated",
+                     width=84))
 
     if checks:
-        print(f"  {'Filter':<44}{'Alone':>8}{'Cumulative':>12}{'Count':>9}")
+        hdr = (f"  {Fore.LIGHTCYAN_EX}{Style.BRIGHT}{'#':<4}{'Filter':<44}{'Alone':>8}{'Cumulative':>13}{'Count':>10}{Style.RESET_ALL}")
+        sep = f"  {Fore.LIGHTBLACK_EX}{'-' * 79}{Style.RESET_ALL}"
+        print(hdr)
+        print(sep)
+
         previous_count = checks
         for position, name in enumerate(filter_names, start=1):
             count = passed_cumulative[name]
-            note = "  <- adds little" if count >= ADDS_LITTLE_RATIO * previous_count else ""
-            print(f"  {position}. {name:<41}{passed_alone[name] / checks * 100:>7.1f}%"
-                  f"{count / checks * 100:>11.1f}%{count:>9,}{note}")
+            note = f"  {bright_yellow('<- adds little')}" if count >= ADDS_LITTLE_RATIO * previous_count else ""
+            pos_str = dim(f"{position:<4}")
+            name_str = bright_white(f"{name:<44}")
+            alone_str = bright_cyan(f"{passed_alone[name] / checks * 100:>7.1f}%")
+            cum_str = bright_yellow(f"{count / checks * 100:>12.1f}%")
+            cnt_str = bright_white(f"{count:>9,}")
+            print(f"  {pos_str}{name_str}{alone_str}{cum_str}{cnt_str}{note}")
             previous_count = count
-        print(f"\n  Signals (all filters passed): {previous_count:,} "
-              f"({previous_count / checks * 100:.2f}% of stock-days)")
+
+        sig_pct = previous_count / checks * 100
+        print(f"\n  {bright_green('Signals (all filters passed):')} {bright_white(f'{previous_count:,}')} "
+              f"({bright_yellow(f'{sig_pct:.2f}%')} {dim('of stock-days')})\n")
 
     for message, occurrences in errors.most_common(3):
-        print(f"\n  [!] {occurrences:,} evaluations failed: {message}")
+        print(f"  {badge_error('Evaluation')} {occurrences:,} evaluations failed: {dim(message)}")
 
 
 def parse_arguments():
@@ -106,7 +121,7 @@ def main():
     elif args.strategy in available:
         selected = {args.strategy: available[args.strategy]}
     else:
-        print(f"Unknown strategy '{args.strategy}'. Available: {list(available.keys())}")
+        print(f"\n  {badge_error('Strategy')} Unknown strategy '{bright_yellow(args.strategy)}'. Available: {list(available.keys())}\n")
         return
 
     symbols = get_nifty50_symbols() if args.universe == "nifty50" else get_nifty100_symbols()
@@ -115,12 +130,11 @@ def main():
 
     for key, strategy_module in selected.items():
         if not hasattr(strategy_module, "evaluate_filters"):
-            print(f"\nSkipping {strategy_module.NAME}: no evaluate_filters() function.")
+            print(f"\n  {badge_info('Skipped')} {bright_yellow(strategy_module.NAME)}: no evaluate_filters() function.")
             continue
         period = getattr(strategy_module, "DATA_PERIOD", HISTORY_PERIOD)
-        print(f"Loading price data for {strategy_module.NAME} (period={period}) ...")
+        print(f"\n  {bright_cyan('Measuring')} {Fore.LIGHTMAGENTA_EX}{Style.BRIGHT}{strategy_module.NAME}{Style.RESET_ALL} (period={period}) ...")
         price_histories = load_price_histories(symbols, period)
-        print(f"Measuring {strategy_module.NAME} ...")
         print_funnel(strategy_module.NAME, *measure_funnel(strategy_module, price_histories, args.days))
 
 

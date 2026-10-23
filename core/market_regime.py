@@ -105,20 +105,46 @@ def get_market_regime(price_histories=None):
 
 def print_regime_banner(regime):
     """
-    Prints a formatted status banner showing current Nifty trend and risk advisory.
+    Prints a formatted status banner showing current Nifty trend and risk advisory with colorama.
     """
-    print("\n" + "=" * 60)
+    from core.ui import (
+        badge_regime, bright_cyan, bright_green, bright_red, bright_yellow,
+        bright_white, dim, Fore, Style
+    )
+
+    border = f"{Fore.LIGHTBLUE_EX}{'═' * 66}{Style.RESET_ALL}"
+    print(f"\n{border}")
+
     if regime is None:
-        print("Nifty regime: UNKNOWN (could not fetch index data)")
+        print(f"  {bright_yellow('Nifty Regime:')} {Fore.LIGHTRED_EX}UNKNOWN (could not fetch index data){Style.RESET_ALL}")
     else:
-        print(f"Nifty regime: {regime['trend']}  "
-              f"(Close={regime['close']}, 20EMA={regime['ema20']}, 50EMA={regime['ema50']})")
+        trend = regime["trend"]
+        regime_badge = badge_regime(trend)
+
+        stats = (
+            f"{dim('(')}"
+            f"{bright_white('Close:')} {bright_cyan(str(regime['close']))}  "
+            f"{bright_white('20EMA:')} {Fore.LIGHTYELLOW_EX}{regime['ema20']}{Style.RESET_ALL}  "
+            f"{bright_white('50EMA:')} {Fore.LIGHTMAGENTA_EX}{regime['ema50']}{Style.RESET_ALL}"
+            f"{dim(')')}"
+        )
+
+        print(f"  {bright_cyan('Market Trend:')} {regime_badge}  {stats}")
+
         if regime.get("breadth") is not None:
-            print(f"Market breadth: {regime['breadth']}% of stocks above their 50 EMA")
-        if regime["trend"] == "Bearish":
-            print("Nifty itself is in a downtrend - long-only swing setups")
-            print("are higher risk right now (bounces are more likely to fail).")
-        elif regime["trend"] == "Bullish":
-            print("Nifty is in a healthy uptrend - long-only swing setups")
-            print("have higher probability of follow-through.")
-    print("=" * 60)
+            b_val = regime["breadth"]
+            b_color = Fore.LIGHTGREEN_EX if b_val >= 50.0 else Fore.LIGHTRED_EX
+            print(f"  {bright_white('Market Breadth:')} {b_color}{Style.BRIGHT}{b_val}%{Style.RESET_ALL} {dim('of universe stocks above their 50 EMA')}")
+
+        print(f"  {Fore.LIGHTBLACK_EX}{'─' * 62}{Style.RESET_ALL}")
+        if trend == "Bearish":
+            print(f"  {bright_red('ADVISORY:')} Nifty is in a downtrend. Long-only swing setups")
+            print(f"            are {bright_red('HIGH RISK')} right now (breakouts/bounces prone to fail).")
+        elif trend == "Bullish":
+            print(f"  {bright_green('ADVISORY:')} Nifty is in a healthy uptrend. Long-only swing setups")
+            print(f"            have {bright_green('HIGH PROBABILITY')} of sustained momentum.")
+        else:
+            print(f"  {bright_yellow('ADVISORY:')} Market is range-bound / neutral. Maintain strict risk")
+            print(f"            management and consider conservative position sizing.")
+
+    print(f"{border}\n")

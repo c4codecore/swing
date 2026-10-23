@@ -22,8 +22,14 @@ def screen_stocks(strategy_module, stock_universe, price_histories=None, max_wor
     Screens a universe of stock symbols against a given strategy module.
     If price_histories is provided, reuses existing data without redundant network calls.
     """
+    from core.ui import (
+        badge_match, bright_cyan, bright_yellow, bright_white,
+        bright_green, bright_red, dim, Fore, Style
+    )
+
     signals = []
-    print(f"Screening {len(stock_universe)} stocks with strategy: {strategy_module.NAME}\n")
+    print(f"\n{bright_cyan('Screening')} {bright_yellow(str(len(stock_universe)))} stocks with strategy: "
+          f"{Fore.LIGHTMAGENTA_EX}{Style.BRIGHT}{strategy_module.NAME}{Style.RESET_ALL}\n")
 
     if price_histories is not None:
         histories = price_histories
@@ -34,12 +40,19 @@ def screen_stocks(strategy_module, stock_universe, price_histories=None, max_wor
     for symbol, price_data in histories.items():
         signal = strategy_module.generate_signal(price_data)
         if signal:
-            signal["Ticker"] = symbol.replace(".NS", "")
+            ticker = symbol.replace(".NS", "")
+            signal["Ticker"] = ticker
             signal["Strategy"] = strategy_module.NAME
             signal["Momentum60D"] = trailing_return_pct(price_data)
             signals.append(signal)
-            print(f"  [MATCH] {signal['Ticker']:12s} Entry={signal.get('Entry')} "
-                  f"SL={signal.get('StopLoss')} Target={signal.get('Target')}")
+
+            entry_str = f"Entry={bright_white(str(signal.get('Entry')))}"
+            sl_str = f"SL={bright_red(str(signal.get('StopLoss')))}"
+            target_str = f"Target={bright_green(str(signal.get('Target')))}"
+            mom = signal.get("Momentum60D")
+            mom_str = f"Mom60D={bright_cyan(f'{mom}%')}" if mom is not None else ""
+
+            print(f"  {badge_match()} {bright_yellow(f'{ticker:<10}')} {entry_str}  {sl_str}  {target_str}  {mom_str}")
 
     signals.sort(key=lambda item: item.get("Momentum60D") or float("-inf"), reverse=True)
     return signals

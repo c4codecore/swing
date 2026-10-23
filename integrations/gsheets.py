@@ -160,8 +160,9 @@ def append_to_sheet(watchlist_df):
     try:
         from googleapiclient.discovery import build  # type: ignore
     except ImportError:
-        print("\n[!] Google API libraries not installed. Skipping Google Sheets sync.")
-        print("    Install with: pip install google-auth google-auth-oauthlib google-api-python-client")
+        from core.ui import badge_warn, dim
+        print(f"\n  {badge_warn('Google API')} Libraries not installed. Skipping Google Sheets sync.")
+        print(f"  {dim('Install with: pip install google-auth google-auth-oauthlib google-api-python-client')}")
         return
 
     try:
@@ -198,12 +199,15 @@ def append_to_sheet(watchlist_df):
             body={"values": rows_to_append},
         ).execute()
 
-        print(f"\n[Google Sheets] {len(rows_to_append)} row(s) synced successfully!")
-        print(f"               Sheet URL: {sheet_url}")
+        from core.ui import badge_sheets, bright_green, bright_cyan, bright_yellow
+        print(f"\n  {badge_sheets('Success')} {bright_green(str(len(rows_to_append)))} row(s) synced to Google Sheets!")
+        print(f"  {bright_cyan('Sheet URL:')} {bright_yellow(sheet_url)}")
 
     except FileNotFoundError as e:
-        print(f"\n[Google Sheets] {e}")
-        print("                Skipping Google Sheets sync. Local CSV was written successfully.")
+        from core.ui import badge_warn, dim
+        print(f"\n  {badge_warn('Google Sheets')} {dim(str(e))}")
+        print(f"  {dim('Skipping Google Sheets sync. Local CSV was written successfully.')}")
     except Exception as e:
-        print(f"\n[Google Sheets] Sync failed: {e}")
-        print("                Local CSV was written successfully.")
+        from core.ui import badge_warn, dim
+        print(f"\n  {badge_warn('Google Sheets')} Sync failed: {dim(str(e))}")
+        print(f"  {dim('Local CSV was written successfully.')}")

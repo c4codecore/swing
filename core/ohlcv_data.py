@@ -72,11 +72,13 @@ def fetch_nse_symbol_list(csv_url, index_label, fallback_list):
             listing_df = pd.read_csv(StringIO(response.text))
             col = "Symbol" if "Symbol" in listing_df.columns else "SYMBOL"
             symbols = [f"{symbol.strip()}.NS" for symbol in listing_df[col]]
-            print(f"Fetched {len(symbols)} tickers live from NSE {index_label} list.\n")
+            from core.ui import badge_success, badge_warn, bright_yellow, bright_cyan, dim
+            print(f"  {badge_success('NSE')} Fetched {bright_yellow(str(len(symbols)))} tickers live from NSE {bright_cyan(index_label)} list.\n")
             return symbols
     except Exception as e:
-        print(f"[!] Could not fetch live {index_label} list from NSE ({e}).")
-        print("    Falling back to hardcoded list.\n")
+        from core.ui import badge_warn, bright_cyan, dim
+        print(f"  {badge_warn('NSE')} Could not fetch live {bright_cyan(index_label)} list from NSE ({dim(str(e))}).")
+        print("          Falling back to hardcoded list.\n")
         return fallback_list
 
 
@@ -124,7 +126,8 @@ def fetch_price_history(symbol, period="3y", use_cache=True):
             _MEMORY_CACHE[cache_key] = (now, cleaned)
         return cleaned.copy()
     except Exception as e:
-        print(f"  [!] Could not fetch {symbol}: {e}")
+        from core.ui import badge_error, bright_yellow, dim
+        print(f"  {badge_error('Data')} Could not fetch {bright_yellow(symbol)}: {dim(str(e))}")
         return None
 
 
@@ -136,6 +139,8 @@ def fetch_price_histories_batch(symbols, period="3y", max_workers=10, show_progr
         - Parallel I/O: Since downloading is network bound, multiple worker threads wait
           for Yahoo Finance responses simultaneously, speeding up data loading by 5x-10x.
     """
+    from core.ui import bright_cyan, bright_yellow, bright_green, dim, badge_success
+
     histories = {}
     total = len(symbols)
     completed = 0
@@ -153,9 +158,10 @@ def fetch_price_histories_batch(symbols, period="3y", max_workers=10, show_progr
                 pass
 
             if show_progress:
-                print(f"  Downloaded {completed}/{total} stocks ...", end="\r")
+                pct = int((completed / total) * 100)
+                print(f"  {bright_cyan('Downloading:')} {bright_yellow(str(completed))}/{total} stocks {dim(f'({pct}%)')} ...", end="\r")
 
     if show_progress:
-        print(f"\nUsable price histories fetched for {len(histories)} of {total} stocks.\n")
+        print(f"\n  {badge_success('Data')} Usable price histories ready for {bright_green(str(len(histories)))} of {total} stocks.\n")
 
     return histories
