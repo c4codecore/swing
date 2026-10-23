@@ -20,16 +20,19 @@ def main():
 
     import uvicorn
 
-    print(" -> Backend API & Frontend UI running at: http://127.0.0.1:8000")
+    import socket
+    local_ip = socket.gethostbyname(socket.gethostname())
+    print(f" -> Local (this PC):  http://127.0.0.1:8001")
+    print(f" -> LAN (any device): http://{local_ip}:8001")
     print(" -> Press Ctrl+C to terminate.")
 
     # Auto-open browser
     try:
-        webbrowser.open("http://127.0.0.1:8000")
+        webbrowser.open(f"http://{local_ip}:8001")
     except Exception:
         pass
 
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True, app_dir=backend_dir)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=True, app_dir=backend_dir)
 
 if __name__ == "__main__":
     main()
