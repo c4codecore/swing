@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, TrendingUp, AlertTriangle, ShieldCheck, Activity, Award, BarChart2, Filter, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Play, TrendingUp, AlertTriangle, ShieldCheck, Activity, Award, BarChart2, Filter, CheckCircle2, XCircle, Clock, ChevronDown } from 'lucide-react';
 import { playTone } from '../utils/soundFx';
 
 export default function BacktestLab() {
@@ -12,6 +12,11 @@ export default function BacktestLab() {
   const [results, setResults] = useState(null);
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [tradeFilter, setTradeFilter] = useState('ALL'); // 'ALL' | 'WIN' | 'LOSS'
+  const [regimeFilter, setRegimeFilter] = useState('ALL'); // 'ALL' | 'BULLISH' | 'BEARISH'
+  const [expandedTradeKey, setExpandedTradeKey] = useState(null);
+  const [dailyHistoryByTrade, setDailyHistoryByTrade] = useState({});
+  const [dailyHistoryLoading, setDailyHistoryLoading] = useState(null);
+  const [dailyHistoryError, setDailyHistoryError] = useState({});
 
   useEffect(() => {
     fetch('/api/strategies')
@@ -154,10 +159,72 @@ export default function BacktestLab() {
   };
 
   const filteredTrades = results?.trades?.filter(t => {
-    if (tradeFilter === 'WIN') return t.is_win;
-    if (tradeFilter === 'LOSS') return !t.is_win;
-    return true;
+    const matchesOutcome = tradeFilter === 'ALL' || (tradeFilter === 'WIN' ? t.is_win : !t.is_win);
+    const matchesRegime = regimeFilter === 'ALL' || t.regime === regimeFilter;
+    return matchesOutcome && matchesRegime;
   }) || [];
+
+  const toggleTradeDetails = async (trade, tradeKey) => {
+    if (expandedTradeKey === tradeKey) {
+      setExpandedTradeKey(null);
+      return;
+    }
+    setExpandedTradeKey(tradeKey);
+    setDailyHistoryError(current => ({ ...current, [tradeKey]: null }));
+    if (trade.daily_performance?.length || dailyHistoryByTrade[tradeKey] || dailyHistoryLoading === tradeKey) return;
+
+    setDailyHistoryLoading(tradeKey);
+    try {
+      const requestedPeriod = results?.period || period;
+      const makeRequest = (requested) => fetch(`/api/chart/${encodeURIComponent(trade.symbol)}?period=${requested}&history=true`);
+      let response = await makeRequest(requestedPeriod);
+      if (!response.ok && requestedPeriod !== '1y') response = await makeRequest('1y');
+      if (!response.ok) throw new Error('Could not fetch historical candles.');
+      const chart = await response.json();
+      const candles = chart.candles || [];
+      const entryIndex = candles.findIndex(candle => candle.time === trade.entry_date);
+      const range = candles.filter(candle => candle.time >= trade.entry_date && candle.time <= trade.exit_date);
+      if (!range.length) throw new Error('Daily candles for this trade date range were not returned.');
+
+      const daily = range.map((candle, index) => {
+        const candleIndex = candles.indexOf(candle);
+        const isExitDay = candle.time === trade.exit_date;
+        const tradeMarkPrice = isExitDay ? trade.exit_price : candle.close;
+        const previousMark = index === 0 ? trade.entry_price : candles[candleIndex - 1]?.close;
+        return {
+          date: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          trade_mark_price: tradeMarkPrice,
+          daily_change_pct: previousMark ? Number(((tradeMarkPrice / previousMark - 1) * 100).toFixed(2)) : 0,
+          from_entry_pct: Number(((tradeMarkPrice / trade.entry_price - 1) * 100).toFixed(2)),
+        };
+      });
+      if (entryIndex < 0) throw new Error('Entry-day candle is outside the available history.');
+      setDailyHistoryByTrade(current => ({ ...current, [tradeKey]: daily }));
+    } catch (error) {
+      setDailyHistoryError(current => ({ ...current, [tradeKey]: error.message || 'Unable to load daily history.' }));
+    } finally {
+      setDailyHistoryLoading(null);
+    }
+  };
+
+  const renderTradeFilter = (label, options, value, onChange) => (
+    <div className="trade-filter-group" aria-label={`${label} filter`}>
+      <span>{label}</span>
+      <div className="trade-filter-buttons">
+        {options.map(option => <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          className={value === option.value ? 'active' : ''}
+          onClick={() => onChange(option.value)}
+        >{option.label}</button>)}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ animation: 'fadeInUp 0.35s ease' }}>
@@ -372,34 +439,24 @@ export default function BacktestLab() {
                   <Award size={18} color="#38bdf8" /> Simulated Trade Log ({filteredTrades.length})
                 </h3>
 
-                {/* Filter buttons */}
-                <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(0,0,0,0.4)', padding: '0.2rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  {['ALL', 'WIN', 'LOSS'].map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setTradeFilter(f)}
-                      style={{
-                        background: tradeFilter === f ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                        border: tradeFilter === f ? '1px solid #38bdf8' : '1px solid transparent',
-                        color: tradeFilter === f ? '#fff' : 'var(--text-dim)',
-                        fontSize: '0.72rem',
-                        fontFamily: 'var(--font-mono)',
-                        padding: '0.2rem 0.6rem',
-                        borderRadius: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {f}
-                    </button>
-                  ))}
+                <div className="trade-log-filters">
+                  {renderTradeFilter('Outcome', [
+                    { value: 'ALL', label: 'All' }, { value: 'WIN', label: 'Wins' }, { value: 'LOSS', label: 'Losses' },
+                  ], tradeFilter, setTradeFilter)}
+                  {renderTradeFilter('Nifty regime', [
+                    { value: 'ALL', label: 'All' }, { value: 'BULLISH', label: 'Bullish' }, { value: 'BEARISH', label: 'Bearish' },
+                  ], regimeFilter, setRegimeFilter)}
                 </div>
               </div>
+
+              <p className="trade-regime-note">Bullish/Bearish shows the Nifty market regime on the strategy signal date. Combine it with Wins or Losses to compare outcomes. Select a symbol to see its day-by-day price path.</p>
 
               <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#080d18', zIndex: 5 }}>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-dim)', textAlign: 'left' }}>
                       <th style={{ padding: '0.65rem 0.75rem' }}>SYMBOL</th>
+                      <th style={{ padding: '0.65rem 0.75rem' }} title="Nifty regime on the strategy signal date">REGIME</th>
                       <th style={{ padding: '0.65rem 0.75rem' }}>ENTRY</th>
                       <th style={{ padding: '0.65rem 0.75rem' }}>EXIT</th>
                       <th style={{ padding: '0.65rem 0.75rem' }}>ENTRY ₹</th>
@@ -412,9 +469,25 @@ export default function BacktestLab() {
                   <tbody>
                     {filteredTrades.map((t, idx) => {
                       const isWin = t.is_win;
+                      const tradeKey = `${t.symbol}:${t.entry_date}`;
+                      const isExpanded = expandedTradeKey === tradeKey;
                       return (
-                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                          <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700, color: '#fff' }}>{t.symbol}</td>
+                        <React.Fragment key={tradeKey}>
+                        <tr className={isExpanded ? 'trade-log-row expanded' : 'trade-log-row'} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700 }}>
+                            <button
+                              type="button"
+                              className="trade-symbol-toggle"
+                              aria-expanded={isExpanded}
+                              aria-label={`${isExpanded ? 'Hide' : 'Show'} daily performance for ${t.symbol}, ${t.entry_date}`}
+                              onClick={() => toggleTradeDetails(t, tradeKey)}
+                            >{t.symbol}<ChevronDown size={14} className={isExpanded ? 'rotated' : ''} /></button>
+                          </td>
+                          <td style={{ padding: '0.65rem 0.75rem' }}>
+                            <span className={`trade-regime-chip ${t.regime === 'BULLISH' ? 'bullish' : t.regime === 'BEARISH' ? 'bearish' : 'unknown'}`} title="Nifty market regime when the strategy signal was generated">
+                              {t.regime === 'BULLISH' ? 'Bullish' : t.regime === 'BEARISH' ? 'Bearish' : 'Unknown'}
+                            </span>
+                          </td>
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.entry_date}</td>
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.exit_date}</td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>₹{t.entry_price}</td>
@@ -436,6 +509,30 @@ export default function BacktestLab() {
                             </span>
                           </td>
                         </tr>
+                        {isExpanded && <tr className="trade-detail-row">
+                          <td colSpan={9}>
+                            <div className="trade-daily-detail">
+                              <div className="trade-daily-heading">
+                                <div><strong>{t.symbol} · Daily performance</strong><span>{t.entry_date} to {t.exit_date} · {t.holding_days} trading session{t.holding_days === 1 ? '' : 's'}</span></div>
+                                <span className={`trade-result-chip ${isWin ? 'win' : 'loss'}`}>{isWin ? 'WIN' : 'LOSS'} · {t.pnl_pct > 0 ? '+' : ''}{t.pnl_pct}% net</span>
+                              </div>
+                              <p>Trade mark uses the daily close until exit day, then the modeled exit fill. Day change is measured against the previous session close; on the first day it is measured from entry. Final net P&amp;L includes estimated trading costs. Daily OHLC is candle data, so it does not show the exact intraday exit moment.</p>
+                              {t.daily_performance?.length || dailyHistoryByTrade[tradeKey]?.length ? <div className="trade-daily-table-wrap">
+                                <table className="trade-daily-table">
+                                  <thead><tr><th>DATE</th><th>OPEN ₹</th><th>HIGH ₹</th><th>LOW ₹</th><th>CLOSE ₹</th><th>TRADE MARK ₹</th><th>DAY CHANGE</th><th>RETURN FROM ENTRY</th></tr></thead>
+                                  <tbody>{(t.daily_performance?.length ? t.daily_performance : dailyHistoryByTrade[tradeKey]).map((day) => <tr key={day.date}>
+                                    <td>{day.date}</td><td>₹{day.open?.toFixed(2)}</td><td>₹{day.high?.toFixed(2)}</td><td>₹{day.low?.toFixed(2)}</td><td>₹{day.close?.toFixed(2)}</td><td>₹{day.trade_mark_price?.toFixed(2)}</td>
+                                    <td className={day.daily_change_pct >= 0 ? 'positive' : 'negative'}>{day.daily_change_pct > 0 ? '+' : ''}{day.daily_change_pct}%</td>
+                                    <td className={day.from_entry_pct >= 0 ? 'positive' : 'negative'}>{day.from_entry_pct > 0 ? '+' : ''}{day.from_entry_pct}%</td>
+                                  </tr>)}</tbody>
+                                </table>
+                              </div> : dailyHistoryLoading === tradeKey
+                                ? <div className="trade-daily-empty">Loading daily price history…</div>
+                                : <div className="trade-daily-empty">{dailyHistoryError[tradeKey] || 'Daily price history is unavailable for this date range.'}</div>}
+                            </div>
+                          </td>
+                        </tr>}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>

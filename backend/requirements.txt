@@ -3,6 +3,6 @@ uvicorn>=0.30.0
 pydantic>=2.9.0
 pandas>=2.2.0
 numpy>=1.26.0
-yfinance>=0.2.40
+yfinance>=0.2.51
 requests>=2.32.0
 python-dateutil>=2.9.0

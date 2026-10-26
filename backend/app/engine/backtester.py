@@ -1,6 +1,7 @@
 """Walk-forward strategy backtester with explicit fills, sizing, and cost assumptions."""
 from typing import Any, Dict, List, Optional
 import logging
+import math
 
 import pandas as pd
 
@@ -89,6 +90,16 @@ def run_strategy_backtest(strategy_name: str, symbols: Optional[List[str]] = Non
                     "stop_loss": stop, "target": target,
                     "holding_days": max(1, exit_bar - entry_bar + 1),
                     "exit_reason": reason, "regime": regime,
+                    "daily_prices": [
+                        {
+                            "date": df.index[bar].strftime("%Y-%m-%d"),
+                            "open": round(float(df["Open"].iloc[bar]), 2),
+                            "high": round(float(df["High"].iloc[bar]), 2),
+                            "low": round(float(df["Low"].iloc[bar]), 2),
+                            "close": round(float(df["Close"].iloc[bar]), 2),
+                        }
+                        for bar in range(entry_bar, exit_bar + 1)
+                    ],
                 })
                 idx = exit_bar + 1
         except Exception:
@@ -145,6 +156,19 @@ def run_strategy_backtest(strategy_name: str, symbols: Optional[List[str]] = Non
             "shares": shares, "capital_used": round(capital, 2),
             "pnl": round(net_pnl, 2), "pnl_pct": round(pnl_pct, 2),
             "costs": round(entry_fee + exit_fee, 2), "is_win": net_pnl > 0,
+            "daily_performance": [
+                {
+                    **day,
+                    "trade_mark_price": round(fill_exit if day_idx == len(candidate["daily_prices"]) - 1 else day["close"], 2),
+                    "daily_change_pct": round(
+                        (((fill_exit if day_idx == len(candidate["daily_prices"]) - 1 else day["close"])
+                          / (fill_entry if day_idx == 0 else candidate["daily_prices"][day_idx - 1]["close"])) - 1) * 100,
+                        2,
+                    ),
+                    "from_entry_pct": round(((fill_exit if day_idx == len(candidate["daily_prices"]) - 1 else day["close"]) / fill_entry - 1) * 100, 2),
+                }
+                for day_idx, day in enumerate(candidate["daily_prices"])
+            ],
         }
         trades.append(record)
         open_positions.append({"exit_date": candidate["exit_date"], "capital": capital, "net_pnl": net_pnl})
@@ -177,7 +201,7 @@ def run_strategy_backtest(strategy_name: str, symbols: Optional[List[str]] = Non
                                "profit_factor": round(gp / gl, 2) if gl else (None if gp else 0.0)}
 
     return {
-        "strategy": strategy_name, "display_name": strategy.display_name,
+        "strategy": strategy_name, "display_name": strategy.display_name, "period": period,
         "total_trades": total_trades, "win_rate_pct": round(len(wins) / total_trades * 100, 1) if total_trades else 0.0,
         "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss else (None if gross_profit else 0.0),
         "avg_win_pct": round(sum(t["pnl_pct"] for t in wins) / len(wins), 2) if wins else 0.0,

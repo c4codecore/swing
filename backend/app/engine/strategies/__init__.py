@@ -7,12 +7,14 @@ from app.engine.strategies.trend_pullback import TrendPullbackStrategy
 from app.engine.strategies.relative_strength import RelativeStrengthBreakoutStrategy
 from app.engine.strategies.capitulation_reversal import CapitulationReversalStrategy
 from app.engine.strategies.volatility_squeeze import VolatilitySqueezeStrategy
+from app.engine.strategies.multi_factor import MultiFactorStrategy
 
 STRATEGY_REGISTRY: Dict[str, BaseStrategy] = {
     "trend_pullback": TrendPullbackStrategy(),
     "relative_strength": RelativeStrengthBreakoutStrategy(),
     "capitulation_reversal": CapitulationReversalStrategy(),
-    "volatility_squeeze": VolatilitySqueezeStrategy()
+    "volatility_squeeze": VolatilitySqueezeStrategy(),
+    "multi_factor": MultiFactorStrategy()
 }
 
 

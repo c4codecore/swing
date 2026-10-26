@@ -32,6 +32,7 @@ _load_local_env(Path(__file__).resolve().parents[1] / ".env")
 from app.core.config import BENCHMARK_INDEX, DEFAULT_UNIVERSE
 from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
 from app.core.indicators import ema, rsi
+from app.core.stock_research import get_stock_research
 from app.engine.regime import analyze_market_regime
 from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
@@ -200,7 +201,7 @@ def get_universe_symbols():
 
 
 @app.get("/api/chart/{symbol}")
-def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y"] = "6mo"):
+def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y", "2y", "3y"] = "6mo", history: bool = False):
     """
     Returns candlestick data and computed indicators for charting.
     """
@@ -235,7 +236,7 @@ def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y"] = "6m
 
         return {
             "symbol": symbol.replace(".NS", ""),
-            "candles": candles[-120:]  # Send last 120 bars for smooth performance
+            "candles": candles if history else candles[-120:]  # Full range on demand; charts stay lightweight by default.
         }
     except HTTPException:
         raise
@@ -244,6 +245,21 @@ def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y"] = "6m
     except Exception:
         logger.exception("Chart request failed for %s", symbol)
         raise HTTPException(status_code=500, detail="Unable to load chart data.")
+
+
+@app.get("/api/stock/{symbol}/research")
+def get_stock_research_data(symbol: str):
+    """Returns recent headlines, daily technicals, and available company fundamentals."""
+    if not re.fullmatch(r"[A-Za-z0-9&._^-]{1,24}", symbol):
+        raise HTTPException(status_code=422, detail="Invalid symbol format.")
+    ns_symbol = symbol.upper() if symbol.upper().endswith(".NS") else f"{symbol.upper()}.NS"
+    if ns_symbol not in set(DEFAULT_UNIVERSE):
+        raise HTTPException(status_code=404, detail="Symbol is not in the supported universe.")
+    try:
+        return get_stock_research(ns_symbol)
+    except Exception:
+        logger.exception("Stock research request failed for %s", ns_symbol)
+        raise HTTPException(status_code=500, detail="Unable to load stock research details.")
 
 
 from fastapi.staticfiles import StaticFiles

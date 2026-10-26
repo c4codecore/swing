@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import DEFAULT_UNIVERSE
 from app.core.data_fetcher import MarketDataUnavailable, fetch_benchmark, fetch_ohlcv
+from app.core.news_fetcher import fetch_news_context
 from app.engine.regime import analyze_market_regime
 from app.engine.strategies import STRATEGY_REGISTRY
 
@@ -19,7 +20,7 @@ class ScreenerEngine:
         self._cache: Dict[Tuple[Tuple[str, ...], Tuple[str, ...]], Tuple[float, Dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
-    def scan_symbol(self, symbol: str, active_strategies: List[str], benchmark_df):
+    def scan_symbol(self, symbol: str, active_strategies: List[str], benchmark_df, force_refresh: bool = False):
         df = fetch_ohlcv(symbol, period="1y")
         if len(df) < 60:
             raise ValueError(f"Insufficient history for {symbol}.")
@@ -35,6 +36,18 @@ class ScreenerEngine:
                     "current_price": cur_price, "change_pct": change_pct,
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 })
+                if strat_key == "multi_factor":
+                    news = fetch_news_context(symbol, force_refresh=force_refresh)
+                    signal["news"] = news
+                    if news["status"] == "unavailable":
+                        signal["trade_status"] = "REVIEW_NEWS_UNAVAILABLE"
+                        signal["overall_score"] = min(signal["overall_score"], 60)
+                    elif news["event_risk"]:
+                        signal["trade_status"] = "AVOID_PENDING_EVENT_REVIEW"
+                        signal["overall_score"] = min(signal["overall_score"], 50)
+                    else:
+                        signal["trade_status"] = "REVIEW_HEADLINES"
+                    signal["review_required"] = True
                 results.append(signal)
         return results
 
@@ -57,7 +70,7 @@ class ScreenerEngine:
             all_signals: List[Dict[str, Any]] = []
             failures = []
             with ThreadPoolExecutor(max_workers=8) as executor:
-                futures = {executor.submit(self.scan_symbol, sym, list(active_strats), bench_df): sym for sym in scan_symbols}
+                futures = {executor.submit(self.scan_symbol, sym, list(active_strats), bench_df, force_refresh): sym for sym in scan_symbols}
                 for future in as_completed(futures):
                     symbol = futures[future]
                     try:
@@ -73,7 +86,7 @@ class ScreenerEngine:
                         signal["regime_badge_color"] = "#10b981" if optimal else "#f59e0b"
                         all_signals.append(signal)
 
-            all_signals.sort(key=lambda item: (item.get("regime_status") == "OPTIMAL", item.get("confidence_score", 0)), reverse=True)
+            all_signals.sort(key=lambda item: (item.get("regime_status") == "OPTIMAL", item.get("overall_score", item.get("confidence_score", 0))), reverse=True)
             succeeded = len(scan_symbols) - len(failures)
             if succeeded == 0:
                 raise MarketDataUnavailable("Market data is unavailable for every requested scan symbol.")

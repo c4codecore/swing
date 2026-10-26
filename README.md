@@ -64,6 +64,12 @@ swing_trading/
 
 ---
 
+## Multi-Factor Confluence strategy
+
+The `multi_factor` screener option scores long setups using EMA trend structure and slope, relative strength versus Nifty, RSI and ADX, volume participation, a 20-session breakout, distance from the 20-day EMA, benchmark context, and stop/target geometry. The score is a checklist score, **not** a probability of profit.
+
+For live screening, recent Yahoo Finance headlines are fetched through `yfinance`. Headline keyword matches can flag possible event risk, and a failed news lookup is shown as a manual-review state. This is a limited headline screen: it does not understand context or replace exchange filings, earnings calendars, or a human reading the full story. The historical backtester uses price history only; it cannot replay historical news from this feed. Treat every setup as research for review, not an automatic trade instruction.
+
 ## 🚀 How to Run
 
 ### Quick Start (Single Command):
