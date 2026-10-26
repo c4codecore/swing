@@ -65,7 +65,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
     <div style={{ animation: 'fadeInUp 0.35s ease' }}>
       {/* Hero Overview Banner */}
       <div 
-        className="glass-card" 
+        className="glass-card regime-summary" 
         style={{ 
           marginBottom: '2rem', 
           borderLeft: `6px solid ${color}`,
@@ -100,7 +100,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
           </div>
 
           {/* Capital Exposure Cockpit Card */}
-          <div style={{ 
+          <div className="exposure-card" style={{ 
             background: 'rgba(0,0,0,0.45)', 
             border: '1px solid rgba(255,255,255,0.08)', 
             borderRadius: '16px', 
@@ -122,7 +122,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
         </div>
 
         {/* Daily Execution Directive */}
-        <div style={{ 
+        <div className="execution-directive" style={{ 
           background: `${color}0d`, 
           borderLeft: `4px solid ${color}`,
           borderTop: '1px solid rgba(255,255,255,0.06)',
@@ -141,7 +141,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
       </div>
 
       {/* Market Cycle Progression Roadmap */}
-      <div className="glass-card" style={{ marginBottom: '2rem' }}>
+      <div className="glass-card phase-roadmap" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div>
             <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#38bdf8', letterSpacing: '0.1em' }}>
@@ -167,6 +167,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
             return (
               <div 
                 key={phase.key}
+                className={`phase-tile ${active ? 'is-active' : ''}`}
                 style={{
                   background: active ? `${color}18` : 'rgba(0,0,0,0.3)',
                   border: active ? `1.5px solid ${color}` : '1px solid rgba(255,255,255,0.06)',
@@ -213,7 +214,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.75rem' }}>
         
         {/* Nifty 50 Technical Vitals Deck */}
-        <div className="glass-card">
+        <div className="glass-card vitals-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <BarChart2 size={18} color="#38bdf8" /> Nifty 50 Technical Vitals
@@ -255,7 +256,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
           </div>
 
           {/* Market Breadth Indicator Progress */}
-          <div style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '1rem' }}>
+          <div className="breadth-panel" style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
               <span style={{ color: 'var(--text-muted)' }}>Market Breadth (% Stocks &gt; 50 EMA)</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: metrics?.breadth_above_50ema_pct >= 50 ? '#10b981' : '#f43f5e' }}>
@@ -284,7 +285,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
         </div>
 
         {/* Strategy Synergy Compatibility Matrix */}
-        <div className="glass-card">
+        <div className="glass-card strategy-matrix-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Layers size={18} color="#a855f7" /> Strategy Activation Matrix
@@ -304,6 +305,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
               return (
                 <div 
                   key={strat.id}
+                  className={`strategy-row ${isAllowed ? 'is-allowed' : 'is-muted'}`}
                   style={{
                     background: isAllowed ? 'rgba(16,185,129,0.04)' : 'rgba(0,0,0,0.3)',
                     border: `1px solid ${isAllowed ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.06)'}`,
