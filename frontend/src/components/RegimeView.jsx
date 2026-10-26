@@ -259,8 +259,8 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
           <div className="breadth-panel" style={{ marginTop: '1.5rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.5rem' }}>
               <span style={{ color: 'var(--text-muted)' }}>Market Breadth (% Stocks &gt; 50 EMA)</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: metrics?.breadth_above_50ema_pct >= 50 ? '#10b981' : '#f43f5e' }}>
-                {metrics?.breadth_above_50ema_pct}%
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, color: metrics?.breadth_above_50ema_pct == null ? 'var(--text-muted)' : metrics.breadth_above_50ema_pct >= 50 ? '#10b981' : '#f43f5e' }}>
+                {metrics?.breadth_above_50ema_pct == null ? 'Unavailable' : `${metrics.breadth_above_50ema_pct}%`}
               </span>
             </div>
             <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden' }}>

@@ -1,29 +1,65 @@
 """
 FastAPI Server - Modern Quantitative Swing Trading Engine
 """
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+import logging
+import os
+import re
+from typing import Optional, Literal
+from pathlib import Path
 
-from app.core.config import DEFAULT_UNIVERSE
-from app.core.data_fetcher import fetch_ohlcv, fetch_benchmark
-from app.core.indicators import ema, sma, rsi, atr
+from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse
+
+
+def _load_local_env(path: Path) -> None:
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key.strip(), value)
+
+
+_load_local_env(Path(__file__).resolve().parents[1] / ".env")
+
+from app.core.config import BENCHMARK_INDEX, DEFAULT_UNIVERSE
+from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
+from app.core.indicators import ema, rsi
 from app.engine.regime import analyze_market_regime
-from app.engine.strategies import STRATEGY_REGISTRY, get_all_strategies
+from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
 from app.engine.backtester import run_strategy_backtest
+from app.core.iifl_market_data import (
+    IIFLNotConfigured,
+    IIFLQuoteUnavailable,
+    IIFLSessionRequired,
+    build_login_url,
+    complete_login,
+    configuration_status,
+    get_nifty_quote,
+)
 
 app = FastAPI(
     title="Quantitative Swing Trading Engine",
     description="Systematic NSE Screener, Adaptive Regime Classifier & Backtesting Engine",
     version="2.0.0"
 )
+logger = logging.getLogger(__name__)
+
+configured_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
+allowed_origins = [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
 
 # Enable CORS for frontend Vite development server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,13 +71,59 @@ def health_check():
     return {"status": "ok", "service": "swing-trading-engine", "version": "2.0.0"}
 
 
+@app.get("/api/market/live/status")
+def live_market_status():
+    return configuration_status()
+
+
+@app.get("/api/market/live/login")
+def iifl_live_login():
+    try:
+        return RedirectResponse(build_login_url(), status_code=302)
+    except IIFLNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.get("/api/market/live/callback")
+def iifl_live_callback(request: Request):
+    # IIFL's callback has been observed using lower-case parameter names.
+    # Treat OAuth query parameter names case-insensitively.
+    callback_params = {key.lower(): value for key, value in request.query_params.items()}
+    auth_code = callback_params.get("authcode")
+    client_id = callback_params.get("clientid")
+    if not auth_code or not client_id:
+        raise HTTPException(status_code=400, detail="IIFL callback is missing authCode or clientId. Check the app's registered redirect URL.")
+    try:
+        complete_login(client_id, auth_code)
+        return RedirectResponse("/", status_code=303)
+    except IIFLNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+
+
+@app.get("/api/market/live/nifty")
+def live_nifty_quote():
+    try:
+        return get_nifty_quote()
+    except IIFLNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except IIFLQuoteUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.get("/api/regime")
 def get_market_regime():
     """Returns current multi-factor market regime, breadth, and strategy guidance."""
     try:
         return analyze_market_regime()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except MarketDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("Market regime request failed")
+        raise HTTPException(status_code=500, detail="Unable to calculate market regime.")
 
 
 @app.get("/api/strategies")
@@ -65,17 +147,28 @@ def run_screener(
 ):
     """Executes high-speed screener across the NSE universe."""
     try:
-        strat_filter = [strategy] if strategy and strategy in STRATEGY_REGISTRY else None
+        if strategy and strategy not in STRATEGY_REGISTRY:
+            raise HTTPException(status_code=422, detail="Unknown strategy filter.")
+        strat_filter = [strategy] if strategy else None
         return screener_engine.run_screener(force_refresh=force_refresh, strategy_filter=strat_filter)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except HTTPException:
+        raise
+    except MarketDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("Screener request failed")
+        raise HTTPException(status_code=500, detail="Unable to complete market scan.")
 
 
 class BacktestRequest(BaseModel):
-    strategy: str = "trend_pullback"
-    period: str = "2y"
-    max_holding_days: int = 15
-    risk_per_trade_pct: float = 1.5
+    strategy: str = Field(default="trend_pullback", pattern=r"^[a-z_]+$")
+    period: Literal["6mo", "1y", "2y", "3y"] = "2y"
+    max_holding_days: int = Field(default=15, ge=1, le=90)
+    risk_per_trade_pct: float = Field(default=1.5, ge=0.1, le=5)
+    initial_capital: float = Field(default=100000, gt=0, le=1000000000)
+    max_open_positions: int = Field(default=5, ge=1, le=20)
 
 
 @app.post("/api/backtest/run")
@@ -86,10 +179,17 @@ def execute_backtest(req: BacktestRequest):
             strategy_name=req.strategy,
             period=req.period,
             max_holding_days=req.max_holding_days,
-            risk_per_trade_pct=req.risk_per_trade_pct
+            risk_per_trade_pct=req.risk_per_trade_pct,
+            initial_capital=req.initial_capital,
+            max_open_positions=req.max_open_positions,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except MarketDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("Backtest request failed")
+        raise HTTPException(status_code=500, detail="Unable to run backtest.")
 
 
 @app.get("/api/symbols")
@@ -100,12 +200,16 @@ def get_universe_symbols():
 
 
 @app.get("/api/chart/{symbol}")
-def get_chart_data(symbol: str, period: str = "6mo"):
+def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y"] = "6mo"):
     """
     Returns candlestick data and computed indicators for charting.
     """
     try:
-        ns_symbol = symbol if symbol.endswith(".NS") or symbol.startswith("^") else f"{symbol}.NS"
+        if not re.fullmatch(r"[A-Za-z0-9&._^-]{1,24}", symbol):
+            raise HTTPException(status_code=422, detail="Invalid symbol format.")
+        ns_symbol = symbol.upper() if symbol.startswith("^") else (symbol.upper() if symbol.upper().endswith(".NS") else f"{symbol.upper()}.NS")
+        if ns_symbol not in set(DEFAULT_UNIVERSE) | {BENCHMARK_INDEX}:
+            raise HTTPException(status_code=404, detail="Symbol is not in the supported universe.")
         df = fetch_ohlcv(ns_symbol, period=period)
         if df.empty or len(df) < 20:
             raise HTTPException(status_code=404, detail=f"No data for {symbol}")
@@ -133,11 +237,15 @@ def get_chart_data(symbol: str, period: str = "6mo"):
             "symbol": symbol.replace(".NS", ""),
             "candles": candles[-120:]  # Send last 120 bars for smooth performance
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except MarketDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("Chart request failed for %s", symbol)
+        raise HTTPException(status_code=500, detail="Unable to load chart data.")
 
 
-import os
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 

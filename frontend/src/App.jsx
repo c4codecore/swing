@@ -3,8 +3,9 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, AudioLines, BarChart3, Bell, BookOpen,
   CandlestickChart, Check, ChevronDown, CircleHelp, Compass, Copy, LayoutDashboard,
   LineChart, MoreHorizontal, Search, ShieldCheck,
-  Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, Zap, RefreshCw
+  Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio
 } from 'lucide-react';
+import appLogo from './assets/logo.png';
 import StockChart from './components/StockChart';
 import RegimeView from './components/RegimeView';
 import BacktestLab from './components/BacktestLab';
@@ -42,7 +43,7 @@ function MetricCard({ label, value, change, positive, icon: Icon, tone = 'mint',
   return <article className={`metric-card tone-${tone}`}>
     <div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={16} /></span></div>
     <div className="metric-value">{value}</div>
-    <div className="metric-bottom"><span className={`metric-change ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{change}</span><span>{note}</span></div>
+    <div className="metric-bottom"><span className={`metric-change ${positive == null ? '' : positive ? 'positive' : 'negative'}`}>{positive === true ? <ArrowUpRight size={14} /> : positive === false ? <ArrowDownRight size={14} /> : null}{change}</span><span>{note}</span></div>
     <Sparkline positive={positive} seed={value.length} />
   </article>;
 }
@@ -50,6 +51,8 @@ function MetricCard({ label, value, change, positive, icon: Icon, tone = 'mint',
 export default function App() {
   const [activeTab, setActiveTab] = useState('screener');
   const [regimeData, setRegimeData] = useState(null);
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [liveQuote, setLiveQuote] = useState(null);
   const [screenerData, setScreenerData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,6 +117,39 @@ export default function App() {
   };
   useEffect(() => { loadRegime(); runScreener(false); }, []);
   useEffect(() => {
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const response = await fetch('/api/market/live/status');
+        if (response.ok && active) setLiveStatus(await response.json());
+      } catch (error) { console.error('Unable to check IIFL feed status', error); }
+    };
+    refreshStatus();
+    const timer = window.setInterval(refreshStatus, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+  useEffect(() => {
+    if (!liveStatus?.authenticated) return undefined;
+    let active = true;
+    const refreshQuote = async () => {
+      try {
+        const response = await fetch('/api/market/live/nifty');
+        if (!response.ok) {
+          if (response.status === 401 && active) {
+            setLiveQuote(null);
+            setLiveStatus(status => ({ ...status, authenticated: false }));
+          }
+          return;
+        }
+        const quote = await response.json();
+        if (active) setLiveQuote(quote);
+      } catch (error) { console.error('Unable to refresh IIFL NIFTY quote', error); }
+    };
+    refreshQuote();
+    const timer = window.setInterval(refreshQuote, 3000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [liveStatus?.authenticated]);
+  useEffect(() => {
     const onKeyDown = event => {
       if (event.key === '/' && document.activeElement !== searchInputRef.current && !selectedChartTrade) { event.preventDefault(); searchInputRef.current?.focus(); }
       if (event.key === 'Escape') { setSelectedChartTrade(null); if (document.activeElement === searchInputRef.current) { setSearchQuery(''); searchInputRef.current.blur(); } }
@@ -132,6 +168,8 @@ export default function App() {
   const optimalCount = allSignals.filter(signal => signal.regime_status === 'OPTIMAL').length;
   const avgRR = allSignals.length ? (allSignals.reduce((sum, signal) => sum + (signal.risk_reward || 0), 0) / allSignals.length).toFixed(1) : '—';
   const metrics = regimeData?.metrics || {};
+  const liveChange = liveQuote?.change_pct;
+  const quoteFresh = liveQuote && Date.now() - Date.parse(liveQuote.received_at) < 10000;
   const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'regime' ? 'Market regime' : 'Strategy lab';
 
   const selectTab = id => { setActiveTab(id); playTone('click'); };
@@ -147,7 +185,7 @@ export default function App() {
   return <div className="spatial-app">
     {toast && <CyberToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     <aside className="side-rail">
-      <button className="brand-mark" aria-label="Aether home" onClick={() => selectTab('screener')}><span className="brand-orb"><Zap size={20} fill="currentColor" /></span></button>
+      <button className="brand-mark" aria-label="Aether home" onClick={() => selectTab('screener')}><span className="brand-orb"><img className="brand-logo" src={appLogo} alt="" /></span></button>
       <div className="rail-divider" />
       <div className="nav-group-label">WORKSPACE</div>
       <nav className="side-nav" aria-label="Primary navigation">
@@ -172,6 +210,7 @@ export default function App() {
         <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{marketName}</strong></div>
         <div className="topbar-actions">
           <div className={`session-pill ${isMarketOpen ? 'session-open' : ''}`}><span className="session-indicator" /><span>{isMarketOpen ? 'NSE market open' : 'Market closed'}</span><i />{currentTime} IST</div>
+          <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
           <button className="icon-button" title={soundOn ? 'Mute sound' : 'Enable sound'} onClick={toggleSound}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
           <button className="icon-button notification-button" title="Notifications" onClick={() => showToast('You’re all caught up', 'info')}><Bell size={17} /><span /></button>
           <button className="scan-button" onClick={() => runScreener(true)} disabled={loading}>{loading ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{loading ? 'Scanning' : 'Run scan'}</button>
@@ -196,8 +235,8 @@ export default function App() {
           </section>
 
           <section className="market-strip" aria-label="Market snapshot">
-            <MetricCard label="NIFTY 50" value={metrics.nifty_close ? Number(metrics.nifty_close).toLocaleString('en-IN') : '—'} change={metrics.dist_20ema_pct == null ? '—' : `${metrics.dist_20ema_pct > 0 ? '+' : ''}${metrics.dist_20ema_pct}%`} positive={(metrics.dist_20ema_pct ?? 0) >= 0} icon={LineChart} note="vs 20 day average" tone="lilac" />
-            <MetricCard label="Market breadth" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct >= 50 ? 'Broadening' : 'Narrow'} positive={metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="above 50 day average" tone="mint" />
+            <MetricCard label="NIFTY 50" value={liveQuote?.price != null ? Number(liveQuote.price).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : metrics.nifty_close ? Number(metrics.nifty_close).toLocaleString('en-IN') : '—'} change={liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : metrics.dist_20ema_pct == null ? '—' : `${metrics.dist_20ema_pct > 0 ? '+' : ''}${metrics.dist_20ema_pct}% vs EMA`} positive={liveQuote ? liveChange >= 0 : (metrics.dist_20ema_pct ?? 0) >= 0} icon={LineChart} note={liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : liveStatus?.configured ? 'Daily close · connect live feed' : 'Daily close'} tone="lilac" />
+            <MetricCard label="Market breadth" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'Broadening' : 'Narrow'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="above 50 day average" tone="mint" />
             <MetricCard label="Active setups" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} high alignment`} positive={optimalCount > 0} icon={Target} note={`Average 1:${avgRR} risk / reward`} tone="peach" />
             <article className="regime-card" onClick={() => selectTab('regime')} role="button" tabIndex="0" onKeyDown={event => event.key === 'Enter' && selectTab('regime')}>
               <div className="regime-orbit"><span /><i /><b /></div><div className="regime-copy"><span className="regime-label">CURRENT REGIME</span><strong>{regimeData?.title || 'Reading the market'}</strong><small><span className="regime-dot" style={{ backgroundColor: regimeData?.color || '#aaa' }} />{regimeData?.recommended_action || 'Market conditions update with each scan'}</small></div><ArrowUpRight size={16} className="regime-link" />

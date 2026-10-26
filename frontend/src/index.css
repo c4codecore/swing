@@ -63,6 +63,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex="0"]:
 .breadcrumb strong { color: #e6e2ed; font-weight: 600; }
 .topbar-actions { display: flex; align-items: center; gap: 11px; }
 .session-pill { height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; color: #aaa4b4; border: 1px solid rgba(235,228,250,.08); border-radius: 9px; background: rgba(255,255,255,.025); font-size: 10px; font-variant-numeric: tabular-nums; }
+.iifl-feed-button { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: #aaa4b4; border: 1px solid rgba(235,228,250,.10); border-radius: 9px; background: rgba(255,255,255,.035); font: inherit; font-size: 10px; cursor: pointer; transition: .2s ease; }
+.iifl-feed-button:hover { border-color: rgba(191,163,231,.42); color: #e2d5f4; }
+.iifl-feed-button.connected { color: #87d3ae; border-color: rgba(135,211,174,.25); background: rgba(80,160,121,.08); }
 .session-pill i { width: 1px; height: 12px; margin: 0 2px; background: rgba(235,228,250,.12); }
 .session-indicator { width: 6px; height: 6px; border-radius: 50%; background: #807988; }
 .session-open .session-indicator { background: var(--mint); box-shadow: 0 0 10px rgba(136,213,177,.6); }
@@ -698,6 +701,8 @@ body { background: radial-gradient(ellipse at 78% -18%, rgba(176,170,242,.23), t
   --petal: #e99ab6;
 }
 .brand-orb { background: linear-gradient(145deg,#9676ed,#7453d2); box-shadow: 4px 4px 0 #d1c8e2, inset 1px 1px rgba(255,255,255,.48); }
+.brand-orb { width: 48px; height: 48px; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.brand-logo { display: block; width: 48px; height: 48px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(64, 38, 130, .2)); }
 .side-nav-item.selected { color: #6646c3; box-shadow: inset 3px 0 #7958dc, 3px 3px 8px rgba(32,32,44,.06), -3px -3px 8px rgba(255,255,255,.7); }
 .nav-count { background: #7958dc; }
 .scan-button, .btn-cyber-primary { background: linear-gradient(145deg,#8e6be9,#7251d2); box-shadow: 4px 4px 0 #cfc7df, inset 1px 1px rgba(255,255,255,.38); }

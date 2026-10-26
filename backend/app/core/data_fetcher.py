@@ -1,107 +1,88 @@
-"""
-Market Data Fetcher with In-Memory TTL Cache and High-Reliability Handling
-"""
-import time
+"""Market data access with normalization, bounded caching, and explicit failures."""
+from __future__ import annotations
+
 import logging
-from typing import Dict, Optional, Tuple
-import pandas as pd
+import threading
+import time
+from typing import Dict, Tuple
+
 import numpy as np
+import pandas as pd
 import yfinance as yf
 
 from app.core.config import BENCHMARK_INDEX, CACHE_TTL_SECONDS
 
-logger = logging.getLogger("MarketData")
-
-# Global in-memory cache: {symbol: (timestamp, dataframe)}
-_CACHE: Dict[str, Tuple[float, pd.DataFrame]] = {}
+logger = logging.getLogger(__name__)
 
 
-def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standardize OHLCV columns, drop forming candles if after hours,
-    and format index to datetime.
-    """
-    if df.empty:
-        return df
-
-    # Handle multi-index columns if returned by yf
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [col[0] for col in df.columns]
-
-    required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-    for col in required_cols:
-        if col not in df.columns:
-            logger.warning(f"Missing column {col} in dataframe")
-            return pd.DataFrame()
-
-    df = df[required_cols].copy()
-    df = df.dropna(subset=['Close'])
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index()
-
-    # Drop duplicate timestamps if any
-    df = df[~df.index.duplicated(keep='last')]
-    return df
+class MarketDataUnavailable(RuntimeError):
+    """Raised when a provider cannot supply usable market data."""
 
 
-def generate_mock_data(symbol: str, days: int = 250) -> pd.DataFrame:
-    """Fallback generator in case Yahoo Finance is throttled or offline."""
-    dates = pd.date_range(end=pd.Timestamp.now().normalize(), periods=days, freq='B')
-    n = len(dates)
-    np.random.seed(abs(hash(symbol)) % 10000000)
-    
-    # Base price based on symbol hash
-    start_price = 500.0 + (abs(hash(symbol)) % 2500)
-    returns = np.random.normal(0.0006, 0.018, size=n)
-    
-    # Introduce regime trends
-    price_path = start_price * np.exp(np.cumsum(returns))
-    
-    high = price_path * (1 + np.abs(np.random.normal(0.008, 0.005, size=n)))
-    low = price_path * (1 - np.abs(np.random.normal(0.008, 0.005, size=n)))
-    open_p = low + (high - low) * np.random.uniform(0.2, 0.8, size=n)
-    volume = np.random.randint(200000, 5000000, size=n)
-    
-    df = pd.DataFrame({
-        'Open': open_p,
-        'High': high,
-        'Low': low,
-        'Close': price_path,
-        'Volume': volume
-    }, index=dates)
-    return df
+_CACHE: Dict[Tuple[str, str, str], Tuple[float, pd.DataFrame]] = {}
+_CACHE_LOCK = threading.Lock()
 
 
-def fetch_ohlcv(symbol: str, period: str = "1y", interval: str = "1d", force_refresh: bool = False) -> pd.DataFrame:
-    """
-    Fetch OHLCV data with memory cache.
-    """
-    now = time.time()
-    cache_key = f"{symbol}_{period}_{interval}"
+def _normalize_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
-    if not force_refresh and cache_key in _CACHE:
-        cached_time, cached_df = _CACHE[cache_key]
-        if now - cached_time < CACHE_TTL_SECONDS:
-            return cached_df.copy()
+    result = frame.copy()
+    if isinstance(result.columns, pd.MultiIndex):
+        fields = {"open", "high", "low", "close", "volume"}
+        selected = {}
+        for col in result.columns:
+            parts = [str(part) for part in col]
+            match = next((part for part in parts if part.lower() in fields), None)
+            if match:
+                selected[match.title()] = col
+        result = result[[selected[key] for key in selected]].copy()
+        result.columns = list(selected)
+
+    result.columns = [str(col).title() for col in result.columns]
+    required = ["Open", "High", "Low", "Close", "Volume"]
+    if any(col not in result.columns for col in required):
+        return pd.DataFrame(columns=required)
+    result = result[required]
+    for col in required:
+        result[col] = pd.to_numeric(result[col], errors="coerce")
+    result = result.replace([np.inf, -np.inf], np.nan).dropna(subset=required)
+    result = result.sort_index()
+    result = result[~result.index.duplicated(keep="last")]
+    result = result[(result[["Open", "High", "Low", "Close"]] > 0).all(axis=1)]
+    result = result[result["High"] >= result["Low"]]
+    result["Volume"] = result["Volume"].clip(lower=0).astype("int64")
+    return result
+
+
+def fetch_ohlcv(symbol: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    key = (symbol.upper(), period, interval)
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        cached = _CACHE.get(key)
+        if cached and now - cached[0] < CACHE_TTL_SECONDS:
+            return cached[1].copy()
 
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval, auto_adjust=False)
-        cleaned = clean_ohlcv(df)
+        raw = yf.Ticker(symbol).history(period=period, interval=interval, auto_adjust=True)
+        frame = _normalize_ohlcv(raw)
+        if frame.empty:
+            raise MarketDataUnavailable(f"No usable market data returned for {symbol}.")
+    except MarketDataUnavailable:
+        raise
+    except Exception as exc:
+        logger.exception("Market data provider failed for %s (%s, %s)", symbol, period, interval)
+        raise MarketDataUnavailable(f"Market data is currently unavailable for {symbol}.") from exc
 
-        if cleaned.empty or len(cleaned) < 30:
-            logger.warning(f"Insufficient real data for {symbol}, generating fallback.")
-            cleaned = generate_mock_data(symbol)
-
-        _CACHE[cache_key] = (now, cleaned)
-        return cleaned.copy()
-    except Exception as e:
-        logger.error(f"Error fetching {symbol}: {e}. Using resilient mock generator.")
-        mock_df = generate_mock_data(symbol)
-        _CACHE[cache_key] = (now, mock_df)
-        return mock_df.copy()
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.monotonic(), frame.copy())
+        # Bound memory for long-running API processes.
+        if len(_CACHE) > 512:
+            oldest = sorted(_CACHE, key=lambda cache_key: _CACHE[cache_key][0])[:128]
+            for cache_key in oldest:
+                _CACHE.pop(cache_key, None)
+    return frame.copy()
 
 
-def fetch_benchmark(period: str = "1y") -> pd.DataFrame:
-    """Fetch Nifty 50 Index OHLCV."""
-    return fetch_ohlcv(BENCHMARK_INDEX, period=period)
+def fetch_benchmark(period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    return fetch_ohlcv(BENCHMARK_INDEX, period=period, interval=interval)

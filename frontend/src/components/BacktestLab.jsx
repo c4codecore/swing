@@ -286,7 +286,7 @@ export default function BacktestLab() {
                 Profit Factor
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.profit_factor >= 1.5 ? '#10b981' : '#f59e0b' }}>
-                {results.profit_factor}
+                {results.profit_factor == null ? (results.total_trades ? '∞' : '—') : results.profit_factor}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Gross Win / Gross Loss</div>
             </div>

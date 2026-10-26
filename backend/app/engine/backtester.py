@@ -1,223 +1,194 @@
-"""
-Comprehensive Walk-Forward Backtest Simulator
-Evaluates strategies with regime attribution, equity curve generation, and risk metrics.
-"""
-from typing import Dict, Any, List, Optional
+"""Walk-forward strategy backtester with explicit fills, sizing, and cost assumptions."""
+from typing import Any, Dict, List, Optional
+import logging
+
 import pandas as pd
-import numpy as np
 
 from app.core.config import DEFAULT_UNIVERSE
-from app.core.data_fetcher import fetch_ohlcv, fetch_benchmark
-from app.engine.strategies import STRATEGY_REGISTRY
+from app.core.data_fetcher import MarketDataUnavailable, fetch_benchmark, fetch_ohlcv
 from app.core.indicators import ema
+from app.engine.strategies import STRATEGY_REGISTRY
+
+logger = logging.getLogger(__name__)
+SUPPORTED_PERIODS = {"6mo", "1y", "2y", "3y"}
 
 
-def run_strategy_backtest(
-    strategy_name: str,
-    symbols: Optional[List[str]] = None,
-    period: str = "2y",
-    max_holding_days: int = 15,
-    initial_capital: float = 100000.0,
-    risk_per_trade_pct: float = 1.5
-) -> Dict[str, Any]:
-    """
-    Backtests a given strategy across universe with realistic trade mechanics:
-    - Signal detected at close (t)
-    - Entry executed at Open next day (t+1)
-    - Stop-loss and Target evaluated bar-by-bar
-    - Tagged by market regime at entry
-    """
-    strategy = STRATEGY_REGISTRY.get(strategy_name)
-    if not strategy:
-        return {"error": f"Strategy {strategy_name} not found"}
+def run_strategy_backtest(strategy_name: str, symbols: Optional[List[str]] = None,
+                          period: str = "2y", max_holding_days: int = 15,
+                          initial_capital: float = 100000.0,
+                          risk_per_trade_pct: float = 1.5,
+                          max_open_positions: int = 5,
+                          commission_bps: float = 2.5,
+                          slippage_bps: float = 5.0) -> Dict[str, Any]:
+    if strategy_name not in STRATEGY_REGISTRY:
+        raise ValueError("Unknown strategy.")
+    if period not in SUPPORTED_PERIODS:
+        raise ValueError("Unsupported backtest period.")
+    if max_holding_days < 1 or max_holding_days > 90:
+        raise ValueError("max_holding_days must be between 1 and 90.")
+    if not 0.1 <= risk_per_trade_pct <= 5:
+        raise ValueError("risk_per_trade_pct must be between 0.1 and 5.")
+    if initial_capital <= 0 or not 1 <= max_open_positions <= 20:
+        raise ValueError("Capital and max_open_positions are outside supported limits.")
 
-    test_symbols = (symbols or DEFAULT_UNIVERSE)[:25]  # Balanced test set
+    strategy = STRATEGY_REGISTRY[strategy_name]
+    test_symbols = list(dict.fromkeys(symbols or DEFAULT_UNIVERSE))[:50]
     bench_df = fetch_benchmark(period=period)
-    bench_close = bench_df['Close'] if not bench_df.empty else pd.Series()
-    bench_ema50 = ema(bench_close, 50) if not bench_close.empty else pd.Series()
+    bench_close = bench_df["Close"]
+    bench_ema50 = ema(bench_close, 50)
+    candidates: List[Dict[str, Any]] = []
+    failures = []
 
-    trades: List[Dict[str, Any]] = []
-
-    for sym in test_symbols:
+    for symbol in test_symbols:
         try:
-            df = fetch_ohlcv(sym, period=period)
+            df = fetch_ohlcv(symbol, period=period)
             if len(df) < 70:
+                failures.append(symbol)
                 continue
+            idx = 55
+            while idx < len(df) - 1:
+                signal = strategy.evaluate(df.iloc[:idx + 1], benchmark_df=bench_df.loc[:df.index[idx]])
+                if not signal or signal.get("signal") != "BUY":
+                    idx += 1
+                    continue
 
-            clean_sym = sym.replace(".NS", "")
-            n_bars = len(df)
-            
-            # Walk-forward simulation
-            bar_idx = 55
-            while bar_idx < n_bars - 2:
-                # Historical slice up to current bar
-                sub_df = df.iloc[:bar_idx + 1]
-                sub_bench = bench_df.iloc[:bar_idx + 1] if not bench_df.empty else None
+                entry_bar = idx + 1
+                raw_entry = float(df["Open"].iloc[entry_bar])
+                stop = float(signal["stop_loss"])
+                target = float(signal["target_1"])
+                # Skip stale/gapped signals and invalid risk geometry.
+                if not stop < raw_entry < target:
+                    idx += 1
+                    continue
+                last_bar = min(len(df) - 1, entry_bar + max_holding_days - 1)
+                exit_price, reason, exit_bar = float(df["Close"].iloc[last_bar]), "DATA_END", last_bar
+                for forward in range(entry_bar, last_bar + 1):
+                    high, low = float(df["High"].iloc[forward]), float(df["Low"].iloc[forward])
+                    open_price = float(df["Open"].iloc[forward])
+                    # If both levels are touched in one candle, assume stop first (conservative).
+                    if low <= stop:
+                        exit_price = min(open_price, stop) if open_price < stop else stop
+                        reason, exit_bar = "STOP_LOSS", forward
+                        break
+                    if high >= target:
+                        exit_price = max(open_price, target) if open_price > target else target
+                        reason, exit_bar = "TARGET_HIT", forward
+                        break
+                    if forward == last_bar:
+                        reason = "TIME_EXIT" if last_bar == entry_bar + max_holding_days - 1 else "DATA_END"
 
-                # Check signal at EOD
-                sig = strategy.evaluate(sub_df, benchmark_df=sub_bench)
-                if sig and sig.get("signal") == "BUY":
-                    # Determine market regime on signal date
-                    sig_date = df.index[bar_idx]
-                    regime_tag = "BULLISH"
-                    if not bench_close.empty and sig_date in bench_close.index:
-                        b_val = bench_close.loc[sig_date]
-                        b_50 = bench_ema50.loc[sig_date]
-                        regime_tag = "BULLISH" if b_val >= b_50 else "BEARISH"
-
-                    # Execution next day Open
-                    entry_bar = bar_idx + 1
-                    entry_date = df.index[entry_bar].strftime("%Y-%m-%d")
-                    entry_price = float(df['Open'].iloc[entry_bar])
-
-                    sl = float(sig['stop_loss'])
-                    tgt1 = float(sig['target_1'])
-                    tgt2 = float(sig['target_2'])
-
-                    # Forward trace trade outcome
-                    exit_price = entry_price
-                    exit_date = entry_date
-                    exit_reason = "TIME_EXIT"
-                    holding_days = 0
-
-                    for forward_step in range(1, max_holding_days + 1):
-                        curr_fwd_idx = entry_bar + forward_step
-                        if curr_fwd_idx >= n_bars:
-                            break
-
-                        holding_days = forward_step
-                        bar_high = float(df['High'].iloc[curr_fwd_idx])
-                        bar_low = float(df['Low'].iloc[curr_fwd_idx])
-                        bar_close = float(df['Close'].iloc[curr_fwd_idx])
-                        bar_date = df.index[curr_fwd_idx].strftime("%Y-%m-%d")
-
-                        # Stop-loss check
-                        if bar_low <= sl:
-                            exit_price = sl
-                            exit_date = bar_date
-                            exit_reason = "STOP_LOSS"
-                            break
-
-                        # Target check (partial/full at Target 1 / 2)
-                        if bar_high >= tgt1:
-                            exit_price = tgt1
-                            exit_date = bar_date
-                            exit_reason = "TARGET_HIT"
-                            break
-
-                        # Time stop at end of window
-                        if forward_step == max_holding_days:
-                            exit_price = bar_close
-                            exit_date = bar_date
-                            exit_reason = "TIME_EXIT"
-
-                    pnl_pct = round(((exit_price - entry_price) / entry_price) * 100, 2)
-                    is_win = pnl_pct > 0
-
-                    trades.append({
-                        "symbol": clean_sym,
-                        "entry_date": entry_date,
-                        "exit_date": exit_date,
-                        "entry_price": round(entry_price, 2),
-                        "exit_price": round(exit_price, 2),
-                        "stop_loss": round(sl, 2),
-                        "target": round(tgt1, 2),
-                        "pnl_pct": pnl_pct,
-                        "holding_days": holding_days,
-                        "exit_reason": exit_reason,
-                        "regime": regime_tag,
-                        "is_win": is_win
-                    })
-
-                    # Skip bars while in trade to avoid overlapping entries on same stock
-                    bar_idx = entry_bar + holding_days
-                else:
-                    bar_idx += 1
-
+                signal_date = df.index[idx]
+                regime = "BULLISH"
+                if signal_date in bench_close.index and pd.notna(bench_ema50.loc[signal_date]):
+                    regime = "BULLISH" if bench_close.loc[signal_date] >= bench_ema50.loc[signal_date] else "BEARISH"
+                candidates.append({
+                    "symbol": symbol.replace(".NS", ""),
+                    "entry_date": df.index[entry_bar].strftime("%Y-%m-%d"),
+                    "exit_date": df.index[exit_bar].strftime("%Y-%m-%d"),
+                    "entry_price": raw_entry, "exit_price": exit_price,
+                    "stop_loss": stop, "target": target,
+                    "holding_days": max(1, exit_bar - entry_bar + 1),
+                    "exit_reason": reason, "regime": regime,
+                })
+                idx = exit_bar + 1
         except Exception:
+            logger.warning("Backtest data/strategy failure for %s", symbol, exc_info=True)
+            failures.append(symbol)
+
+    if not test_symbols or len(set(failures)) == len(test_symbols):
+        raise MarketDataUnavailable("Market data is unavailable for every requested backtest symbol.")
+
+    # Portfolio simulation: reserve capital while positions overlap; size by stop risk and slot capital.
+    candidates.sort(key=lambda trade: (trade["entry_date"], trade["symbol"]))
+    cash = initial_capital
+    open_positions: List[Dict[str, Any]] = []
+    trades: List[Dict[str, Any]] = []
+    skipped_capacity = 0
+    fee_rate, slip_rate = commission_bps / 10000, slippage_bps / 10000
+
+    def settle_until(date: str):
+        nonlocal cash, open_positions
+        remaining = []
+        for position in open_positions:
+            # A close on the entry date is not available to fund another open at that session's open.
+            if position["exit_date"] < date:
+                cash += position["capital"] + position["net_pnl"]
+            else:
+                remaining.append(position)
+        open_positions = remaining
+
+    for candidate in candidates:
+        settle_until(candidate["entry_date"])
+        if len(open_positions) >= max_open_positions:
+            skipped_capacity += 1
             continue
-
-    if not trades:
-        return {
-            "strategy": strategy_name,
-            "display_name": strategy.display_name,
-            "total_trades": 0,
-            "win_rate_pct": 0.0,
-            "profit_factor": 0.0,
-            "max_drawdown_pct": 0.0,
-            "trades": [],
-            "equity_curve": [],
-            "regime_breakdown": {}
+        fill_entry = candidate["entry_price"] * (1 + slip_rate)
+        fill_exit = candidate["exit_price"] * (1 - slip_rate)
+        stop_distance = fill_entry - candidate["stop_loss"]
+        if stop_distance <= 0 or cash <= 0:
+            continue
+        risk_budget = cash * risk_per_trade_pct / 100
+        slot_capital = cash / max_open_positions
+        shares = min(math.floor(risk_budget / stop_distance), math.floor(slot_capital / fill_entry))
+        if shares <= 0:
+            continue
+        capital = shares * fill_entry
+        entry_fee = capital * fee_rate
+        exit_value = shares * fill_exit
+        exit_fee = exit_value * fee_rate
+        net_pnl = exit_value - capital - entry_fee - exit_fee
+        cash -= capital
+        pnl_pct = net_pnl / capital * 100
+        record = {
+            **candidate,
+            "entry_price": round(fill_entry, 2), "exit_price": round(fill_exit, 2),
+            "shares": shares, "capital_used": round(capital, 2),
+            "pnl": round(net_pnl, 2), "pnl_pct": round(pnl_pct, 2),
+            "costs": round(entry_fee + exit_fee, 2), "is_win": net_pnl > 0,
         }
+        trades.append(record)
+        open_positions.append({"exit_date": candidate["exit_date"], "capital": capital, "net_pnl": net_pnl})
 
-    # Sort trades by exit date
-    trades.sort(key=lambda t: t['exit_date'])
-
-    # Performance Metrics
+    settle_until("9999-12-31")
+    trades.sort(key=lambda trade: (trade["exit_date"], trade["symbol"]))
+    wins = [trade for trade in trades if trade["is_win"]]
+    losses = [trade for trade in trades if not trade["is_win"]]
     total_trades = len(trades)
-    wins = [t for t in trades if t['is_win']]
-    losses = [t for t in trades if not t['is_win']]
+    gross_profit = sum(trade["pnl"] for trade in wins)
+    gross_loss = abs(sum(trade["pnl"] for trade in losses))
+    equity = 100.0
+    peak = equity
+    max_drawdown = 0.0
+    equity_curve = []
+    for trade in trades:
+        equity += trade["pnl"] / initial_capital * 100
+        peak = max(peak, equity)
+        max_drawdown = max(max_drawdown, (peak - equity) / peak * 100)
+        equity_curve.append({"date": trade["exit_date"], "equity": round(equity, 2), "pnl": trade["pnl_pct"], "symbol": trade["symbol"]})
 
-    win_rate = round((len(wins) / total_trades) * 100, 1)
-
-    gross_profit = sum(t['pnl_pct'] for t in wins)
-    gross_loss = abs(sum(t['pnl_pct'] for t in losses))
-    profit_factor = round(gross_profit / (gross_loss if gross_loss > 0 else 0.001), 2)
-
-    avg_win = round(gross_profit / len(wins), 2) if wins else 0.0
-    avg_loss = round(gross_loss / len(losses), 2) if losses else 0.0
-
-    # Equity Curve Simulation
-    equity = 100.0  # Base 100
-    peak = 100.0
-    max_dd = 0.0
-    equity_curve: List[Dict[str, Any]] = [{"date": trades[0]["entry_date"], "equity": 100.0}]
-
-    for t in trades:
-        # 1% risk adjusted return
-        trade_return = t['pnl_pct'] * (risk_per_trade_pct / 4.0)
-        equity = equity * (1.0 + (trade_return / 100.0))
-        if equity > peak:
-            peak = equity
-        dd = ((peak - equity) / peak) * 100.0
-        if dd > max_dd:
-            max_dd = dd
-
-        equity_curve.append({
-            "date": t["exit_date"],
-            "equity": round(equity, 2),
-            "pnl": t['pnl_pct'],
-            "symbol": t['symbol']
-        })
-
-    # Regime Breakdown
-    regimes = ["BULLISH", "BEARISH"]
-    regime_breakdown = {}
-    for r in regimes:
-        r_trades = [t for r_t in trades if (r_t["regime"] == r) for t in [r_t]]
-        if r_trades:
-            r_wins = [t for t in r_trades if t['is_win']]
-            r_gp = sum(t['pnl_pct'] for t in r_wins)
-            r_gl = abs(sum(t['pnl_pct'] for t in r_trades if not t['is_win']))
-            r_pf = round(r_gp / (r_gl if r_gl > 0 else 0.001), 2)
-            regime_breakdown[r] = {
-                "trades": len(r_trades),
-                "win_rate": round((len(r_wins) / len(r_trades)) * 100, 1),
-                "total_return_pct": round(sum(t['pnl_pct'] for t in r_trades), 2),
-                "profit_factor": r_pf
-            }
+    regimes = {}
+    for regime in ("BULLISH", "BEARISH"):
+        subset = [trade for trade in trades if trade["regime"] == regime]
+        if subset:
+            gp = sum(trade["pnl"] for trade in subset if trade["is_win"])
+            gl = abs(sum(trade["pnl"] for trade in subset if not trade["is_win"]))
+            regimes[regime] = {"trades": len(subset), "win_rate": round(sum(t["is_win"] for t in subset) / len(subset) * 100, 1),
+                               "total_return_pct": round(sum(t["pnl"] for t in subset) / initial_capital * 100, 2),
+                               "profit_factor": round(gp / gl, 2) if gl else (None if gp else 0.0)}
 
     return {
-        "strategy": strategy_name,
-        "display_name": strategy.display_name,
-        "total_trades": total_trades,
-        "win_rate_pct": win_rate,
-        "profit_factor": profit_factor,
-        "avg_win_pct": avg_win,
-        "avg_loss_pct": avg_loss,
-        "max_drawdown_pct": round(max_dd, 2),
-        "total_return_pct": round(equity - 100.0, 2),
-        "trades": trades[-50:],  # Return latest 50 for display
-        "equity_curve": equity_curve,
-        "regime_breakdown": regime_breakdown
+        "strategy": strategy_name, "display_name": strategy.display_name,
+        "total_trades": total_trades, "win_rate_pct": round(len(wins) / total_trades * 100, 1) if total_trades else 0.0,
+        "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss else (None if gross_profit else 0.0),
+        "avg_win_pct": round(sum(t["pnl_pct"] for t in wins) / len(wins), 2) if wins else 0.0,
+        "avg_loss_pct": round(abs(sum(t["pnl_pct"] for t in losses) / len(losses)), 2) if losses else 0.0,
+        "max_drawdown_pct": round(max_drawdown, 2),
+        "total_return_pct": round((cash / initial_capital - 1) * 100, 2),
+        "trades": [{key: value for key, value in trade.items()} for trade in trades[-50:]],
+        "equity_curve": equity_curve, "regime_breakdown": regimes,
+        "data_status": "partial" if failures else "complete",
+        "scan_summary": {"requested": len(test_symbols), "failed": len(set(failures)), "skipped_capacity": skipped_capacity},
+        "assumptions": {"initial_capital": initial_capital, "risk_per_trade_pct": risk_per_trade_pct,
+                        "max_open_positions": max_open_positions, "commission_bps_per_side": commission_bps,
+                        "slippage_bps_per_side": slippage_bps, "fill_model": "next-session open; conservative stop-first on same-bar conflicts"},
     }
