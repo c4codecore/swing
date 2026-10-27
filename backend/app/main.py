@@ -4,10 +4,12 @@ FastAPI Server - Modern Quantitative Swing Trading Engine
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Optional, Literal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi import FastAPI, Query, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from fastapi.responses import RedirectResponse
@@ -34,17 +36,21 @@ from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
 from app.core.indicators import ema, rsi
 from app.core.stock_research import get_stock_research
 from app.engine.regime import analyze_market_regime
+from app.engine.intraday import analyze_intraday
+from app.engine.options import build_nifty_options_plan
 from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
 from app.engine.backtester import run_strategy_backtest
 from app.core.iifl_market_data import (
     IIFLNotConfigured,
+    IIFLPortfolioUnavailable,
     IIFLQuoteUnavailable,
     IIFLSessionRequired,
     build_login_url,
     complete_login,
     configuration_status,
     get_nifty_quote,
+    get_portfolio_holdings,
 )
 
 app = FastAPI(
@@ -53,6 +59,17 @@ app = FastAPI(
     version="2.0.0"
 )
 logger = logging.getLogger(__name__)
+
+
+def _iifl_error_detail(error: Exception) -> str:
+    message = str(error)
+    if "ip address not authorized" in message.lower():
+        return (
+            "IIFL rejected this API request because the backend's public IP is not authorized. "
+            "Ask IIFL API support/RM to authorize the public egress IP for this API app/account, "
+            "and confirm that read-only holdings and market-data requests are covered."
+        )
+    return message
 
 configured_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
 allowed_origins = [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
@@ -104,7 +121,9 @@ def iifl_live_callback(request: Request):
 
 
 @app.get("/api/market/live/nifty")
-def live_nifty_quote():
+def live_nifty_quote(response: Response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
     try:
         return get_nifty_quote()
     except IIFLNotConfigured as exc:
@@ -112,7 +131,179 @@ def live_nifty_quote():
     except IIFLSessionRequired as exc:
         raise HTTPException(status_code=401, detail=str(exc))
     except IIFLQuoteUnavailable as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail=_iifl_error_detail(exc))
+
+
+@app.get("/api/intraday")
+def intraday_analysis():
+    """Read-only NIFTY opening-range/VWAP setup using IIFL live market data."""
+    try:
+        return analyze_intraday()
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except IIFLQuoteUnavailable as exc:
+        raise HTTPException(status_code=502, detail=_iifl_error_detail(exc))
+    except Exception:
+        logger.exception("Intraday analysis failed")
+        raise HTTPException(status_code=502, detail="IIFL intraday analysis could not be calculated.")
+
+
+@app.get("/api/options")
+def options_analysis():
+    """Build a live-premium NIFTY debit-spread scenario from an intraday bias."""
+    try:
+        intraday = analyze_intraday()
+        return build_nifty_options_plan(intraday)
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except IIFLQuoteUnavailable as exc:
+        raise HTTPException(status_code=502, detail=_iifl_error_detail(exc))
+    except Exception:
+        logger.exception("Options analysis failed")
+        raise HTTPException(status_code=502, detail="IIFL options analysis could not be calculated.")
+
+
+def _analyze_portfolio_holding(holding: dict) -> dict:
+    raw_symbol = str(holding.get("symbol") or "").strip().upper()
+    clean_symbol = re.sub(r"-(EQ|BE|BZ)$", "", raw_symbol)
+    yf_symbol = clean_symbol if clean_symbol.startswith("^") or clean_symbol.endswith(".NS") else f"{clean_symbol}.NS"
+    quantity = _number(holding.get("quantity"))
+    average_price = _number(holding.get("average_price"))
+    last_price = _number(holding.get("last_price"))
+    try:
+        frame = fetch_ohlcv(yf_symbol, period="6mo")
+        closes = frame["Close"].dropna()
+        if len(closes) < 50:
+            raise ValueError("not enough price history")
+        e20 = float(ema(closes, 20).iloc[-1])
+        e50 = float(ema(closes, 50).iloc[-1])
+        rsi_now = float(rsi(closes, 14).iloc[-1])
+        close = float(closes.iloc[-1])
+        last_price = last_price or close
+        return20 = (close / float(closes.iloc[-21]) - 1) * 100 if len(closes) >= 21 else None
+        trend_broken = close < e50 and e20 < e50
+        weak_momentum = rsi_now < 30 and return20 is not None and return20 < 0
+        if trend_broken or weak_momentum:
+            action = "REVIEW_SELL"
+            reasons = []
+            if trend_broken:
+                reasons.append("Latest daily close is below EMA 50 and EMA 20 is below EMA 50 (weak trend).")
+            if weak_momentum:
+                reasons.append("RSI is below 30 and 20-session return is negative (weak momentum).")
+        else:
+            action = "HOLD"
+            reasons = []
+            if close >= e50:
+                reasons.append("Latest daily close is at or above EMA 50.")
+            if e20 >= e50:
+                reasons.append("EMA 20 is at or above EMA 50.")
+            if rsi_now >= 30:
+                reasons.append("RSI is not in the oversold range below 30.")
+            if not reasons:
+                reasons.append("No defined exit warning was triggered by this daily trend check.")
+        invested_value = quantity * average_price if quantity is not None and average_price is not None else None
+        current_value = quantity * last_price if quantity is not None and last_price is not None else None
+        unrealized_pnl = (last_price - average_price) * quantity if last_price is not None and average_price is not None and quantity is not None else _number(holding.get("pnl"))
+        pnl_pct = ((last_price - average_price) / average_price * 100) if last_price is not None and average_price else None
+        if action == "REVIEW_SELL":
+            trend_summary = "Price 50-day trend line (EMA 50) se neeche hai aur short-term trend kamzor hai." if trend_broken else "Recent momentum kamzor hai; price aur trend ko dhyan se review karein."
+            position_summary = f"Average buy price ke muqable abhi lagbhag ₹{abs(unrealized_pnl):,.0f} {'loss' if unrealized_pnl < 0 else 'profit'} ({pnl_pct:+.1f}%). " if unrealized_pnl is not None and pnl_pct is not None else ""
+            beginner_verdict = f"{trend_summary} {position_summary}Ghabra kar faisla na karein aur bina plan ke aur shares na jodein. Apni pehle se tay loss-limit aur investment ka time-horizon check karein; limit toot gayi ho ya yeh short-term trade tha, toh position kam karne ya bechne par vichaar karein."
+        elif action == "HOLD":
+            beginner_verdict = "Is review ke rules ne abhi exit warning nahi di. Yeh risk-free hone ki guarantee nahi hai. Agar share kharidne ki aapki wajah aur time-horizon abhi bhi theek hain, toh hold karna consider karein; apni loss-limit tay rakhein aur agle daily close par dobara review karein."
+        else:
+            beginner_verdict = "Is share ke liye bharosemand daily data nahi mila. Is report ke basis par buy ya sell ka faisla na karein; symbol/data check karke baad me dobara review karein."
+        return {
+            **holding,
+            "display_symbol": clean_symbol,
+            "last_price": round(last_price, 2),
+            "invested_value": round(invested_value, 2) if invested_value is not None else None,
+            "current_value": round(current_value, 2) if current_value is not None else None,
+            "unrealized_pnl": round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
+            "analysis": {
+                "action": action,
+                "as_of": str(frame.index[-1].date()),
+                "close": round(close, 2),
+                "ema20": round(e20, 2), "ema50": round(e50, 2),
+                "rsi14": round(rsi_now, 1),
+                "return20_pct": round(return20, 2) if return20 is not None else None,
+                "reasons": reasons,
+                "beginner_verdict": beginner_verdict,
+            },
+        }
+    except Exception as exc:
+        logger.info("Daily portfolio analysis unavailable for %s: %s", raw_symbol, exc)
+        return {
+            **holding,
+            "display_symbol": clean_symbol,
+            "last_price": last_price,
+            "invested_value": round(quantity * average_price, 2) if quantity is not None and average_price is not None else None,
+            "current_value": round(quantity * last_price, 2) if quantity is not None and last_price is not None else None,
+            "unrealized_pnl": _number(holding.get("pnl")),
+            "analysis": {"action": "INSUFFICIENT_DATA", "as_of": None, "reasons": ["Reliable daily price history was unavailable, so no hold/sell signal was generated."], "beginner_verdict": "Is share ke liye bharosemand daily data nahi mila. Is report ke basis par buy ya sell ka faisla na karein; symbol/data check karke baad me dobara review karein."},
+        }
+
+
+def _number(value):
+    try:
+        number = float(value)
+        return number if number == number and abs(number) != float("inf") else None
+    except (TypeError, ValueError):
+        return None
+
+
+class ManualHolding(BaseModel):
+    symbol: str = Field(min_length=1, max_length=30, pattern=r"^[A-Za-z0-9&._-]+$")
+    quantity: float = Field(gt=0, le=100000000)
+    average_price: float = Field(gt=0, le=1000000000)
+
+
+class ManualPortfolioRequest(BaseModel):
+    holdings: list[ManualHolding] = Field(max_length=100)
+
+
+@app.post("/api/portfolio/manual-review")
+def manual_portfolio_review(request: ManualPortfolioRequest):
+    """Review user-entered holdings without calling IIFL account endpoints."""
+    manual_rows = [
+        {
+            "symbol": holding.symbol.strip().upper(),
+            "quantity": holding.quantity,
+            "average_price": holding.average_price,
+            "record_type": "manual",
+            "exchange": "Manual entry",
+        }
+        for holding in request.holdings
+    ]
+    analyzed = [_analyze_portfolio_holding(row) for row in manual_rows]
+    return {
+        "holdings": analyzed,
+        "source": "Manual entries",
+        "analysis_as_of": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat(timespec="seconds"),
+        "method": "Daily trend check: close vs EMA 50, EMA 20 vs EMA 50, RSI 14, and 20-session return.",
+        "disclaimer": "Technical research screen only, not personalized financial advice. Signals do not place orders; consider your own risk limits, costs, taxes, and investment horizon.",
+    }
+
+
+@app.get("/api/portfolio")
+def portfolio_analysis(force_refresh: bool = Query(False, description="Refresh holdings and rerun daily analysis")):
+    """Read IIFL holdings and return a transparent daily technical review."""
+    try:
+        portfolio = get_portfolio_holdings(force_refresh=force_refresh)
+        analyzed = [_analyze_portfolio_holding(row) for row in portfolio["holdings"]]
+        return {
+            **portfolio,
+            "holdings": analyzed,
+            "analysis_as_of": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat(timespec="seconds"),
+            "method": "Daily trend check: close vs EMA 50, EMA 20 vs EMA 50, and RSI 14 with 20-session return.",
+            "disclaimer": "Research signal only. It is not personalized financial advice and does not place orders. Review costs, taxes, time horizon, and your own risk limits before trading.",
+        }
+    except IIFLNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except IIFLPortfolioUnavailable as exc:
+        raise HTTPException(status_code=502, detail=_iifl_error_detail(exc))
 
 
 @app.get("/api/regime")

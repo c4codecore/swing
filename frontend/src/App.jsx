@@ -10,18 +10,42 @@ import StockChart from './components/StockChart';
 import RegimeView from './components/RegimeView';
 import BacktestLab from './components/BacktestLab';
 import CyberToast from './components/CyberToast';
+import TradingStrategiesView from './components/TradingStrategiesView';
 import { playTone, setSoundEnabled } from './utils/soundFx';
 
 const navigation = [
   { id: 'screener', label: 'Overview', icon: LayoutDashboard, section: 'WORKSPACE' },
   { id: 'regime', label: 'Market regime', icon: Compass },
   { id: 'backtest', label: 'Strategy lab', icon: BarChart3 },
+  { id: 'portfolio', label: 'Portfolio', icon: Wallet },
 ];
-const comingSoon = [
-  { label: 'Intraday', icon: CandlestickChart },
-  { label: 'Options', icon: Activity },
-  { label: 'Portfolio', icon: Wallet },
+const marketNavigation = [
+  { id: 'intraday', label: 'Intraday', icon: CandlestickChart },
+  { id: 'options', label: 'Options', icon: Activity },
 ];
+const MANUAL_PORTFOLIO_KEY = 'swing-trading-manual-portfolio-v1';
+let liveStatusRequest = null;
+
+function fetchLiveStatusOnce() {
+  if (!liveStatusRequest) {
+    liveStatusRequest = fetch('/api/market/live/status')
+      .then(async response => {
+        if (!response.ok) throw new Error(`Live status request failed (${response.status})`);
+        return response.json();
+      })
+      .finally(() => { liveStatusRequest = null; });
+  }
+  return liveStatusRequest;
+}
+
+function readManualPortfolio() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(MANUAL_PORTFOLIO_KEY) || '[]');
+    return Array.isArray(saved) ? saved.filter(item => item && typeof item.symbol === 'string' && Number(item.quantity) > 0 && Number(item.average_price) > 0) : [];
+  } catch {
+    return [];
+  }
+}
 
 function formatPrice(value, fallback = '—') {
   if (value === undefined || value === null || value === '') return fallback;
@@ -196,11 +220,62 @@ function StockResearchDetails({ data, loading, error }) {
   </div>;
 }
 
+function PortfolioView({ data, loading, error, onRefresh, onSaveHolding, onDeleteHolding }) {
+  const [entry, setEntry] = useState({ symbol: '', quantity: '', average_price: '' });
+  const [editingSymbol, setEditingSymbol] = useState(null);
+  const holdings = data?.holdings || [];
+  const totalValue = holdings.reduce((total, item) => total + (Number(item.current_value) || 0), 0);
+  const totalInvestment = holdings.reduce((total, item) => total + (Number(item.invested_value) || 0), 0);
+  const totalPnl = holdings.reduce((total, item) => total + (Number(item.unrealized_pnl) || 0), 0);
+  const submitHolding = event => {
+    event.preventDefault();
+    const symbol = entry.symbol.trim().toUpperCase().replace(/\.NS$/, '');
+    onSaveHolding({ symbol, quantity: Number(entry.quantity), average_price: Number(entry.average_price) }, editingSymbol);
+    setEntry({ symbol: '', quantity: '', average_price: '' });
+    setEditingSymbol(null);
+  };
+  const startEdit = item => {
+    setEditingSymbol(item.symbol);
+    setEntry({ symbol: item.symbol, quantity: String(item.quantity), average_price: String(item.average_price) });
+  };
+  return <section className="module-page portfolio-page">
+    <div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MANUAL PORTFOLIO · DAILY REVIEW</div><h1>Your portfolio</h1><p>Add your shares, quantity and average buy price for a daily technical review.</p></div>
+      <div className="portfolio-actions"><span className="portfolio-connection connected"><i />Saved in this browser</span><button className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? <RefreshCw size={14} className="spin" /> : <RefreshCw size={14} />}{loading ? 'Reviewing' : 'Refresh analysis'}</button></div>
+    </div>
+    <form className="portfolio-entry" onSubmit={submitHolding}>
+      <label>Stock symbol<input value={entry.symbol} onChange={event => setEntry(current => ({ ...current, symbol: event.target.value }))} placeholder="e.g. RELIANCE or TCS" required pattern="[A-Za-z0-9&._-]+" maxLength={30} /></label>
+      <label>Quantity<input type="number" value={entry.quantity} onChange={event => setEntry(current => ({ ...current, quantity: event.target.value }))} min="0.000001" step="any" placeholder="Shares" required /></label>
+      <label>Average buy price<input type="number" value={entry.average_price} onChange={event => setEntry(current => ({ ...current, average_price: event.target.value }))} min="0.01" step="any" placeholder="₹ per share" required /></label>
+      <div className="portfolio-entry-actions"><button className="primary-button" type="submit" disabled={loading}>{editingSymbol ? 'Save changes' : 'Add stock'}</button>{editingSymbol && <button className="secondary-button" type="button" onClick={() => { setEditingSymbol(null); setEntry({ symbol: '', quantity: '', average_price: '' }); }}>Cancel</button>}</div>
+    </form>
+    {error && <div className="portfolio-notice"><strong>{error}</strong></div>}
+    {loading && !data ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Reviewing your shares</strong><span>Calculating daily trend checks…</span></div>
+      : holdings.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Wallet size={19} /></div><strong>Add your first stock</strong><span>Enter its NSE symbol, quantity and average buy price above. Your list is saved in this browser.</span></div>
+        : <>
+          <div className="portfolio-summary"><article><span>SHARES HELD</span><strong>{holdings.length}</strong></article><article><span>INVESTED · EST.</span><strong>{formatPrice(totalInvestment)}</strong></article><article><span>MARKET VALUE · EST.</span><strong>{formatPrice(totalValue)}</strong></article><article><span>UNREALIZED P&amp;L · EST.</span><strong className={totalPnl >= 0 ? 'positive' : 'negative'}>{formatPrice(totalPnl)}</strong></article></div>
+          <div className="portfolio-list">{holdings.map((item, index) => {
+            const analysis = item.analysis || {};
+            const actionLabel = analysis.action === 'REVIEW_SELL' ? 'Review position' : analysis.action === 'HOLD' ? 'Hold' : 'Insufficient data';
+            const actionClass = analysis.action === 'REVIEW_SELL' ? 'review-sell' : analysis.action === 'HOLD' ? 'hold' : 'unknown';
+            return <article className="portfolio-card" key={`${item.display_symbol || item.symbol}-${index}`}>
+              <div className="portfolio-card-heading"><div><span className="instrument-token">{(item.display_symbol || item.symbol || '?').slice(0, 1)}</span><div><strong>{item.display_symbol || item.symbol}</strong><small>Manual entry · Qty {item.quantity ?? '—'}</small></div></div><div className="portfolio-card-controls"><span className={`portfolio-action ${actionClass}`}>{actionLabel}</span><button type="button" onClick={() => startEdit(item)}>Edit</button><button type="button" onClick={() => onDeleteHolding(item.symbol)}>Remove</button></div></div>
+              <div className="portfolio-values"><div><span>LAST PRICE</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVG. BUY</span><b>{formatPrice(item.average_price)}</b></div><div><span>QUANTITY</span><b>{item.quantity}</b></div><div><span>INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>MARKET VALUE · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>UNREALIZED P&amp;L · EST.</span><b className={Number(item.unrealized_pnl) >= 0 ? 'positive' : 'negative'}>{formatPrice(item.unrealized_pnl)}</b></div></div>
+              {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>EMA 20 <b>{formatPrice(analysis.ema20)}</b></span><span>EMA 50 <b>{formatPrice(analysis.ema50)}</b></span><span>RSI 14 <b>{analysis.rsi14 ?? '—'}</b></span><span>20-session return <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{analysis.return20_pct == null ? '—' : `${analysis.return20_pct}%`}</b></span><small>Daily data: {analysis.as_of || '—'}</small></div>}
+              <ul className="portfolio-reasons">{(analysis.reasons || []).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul>
+              <div className={`portfolio-verdict ${actionClass}`}><div><span>AASAAN VERDICT · BEGINNER VIEW</span><strong>{actionLabel}</strong></div><p>{analysis.beginner_verdict || 'Is review me abhi agla step tay karne ke liye kaafi data nahi hai.'}</p></div>
+            </article>;
+          })}</div>
+          <p className="portfolio-disclaimer">{data?.disclaimer || 'Technical research screen only, not personalized financial advice.'} Price history comes from Yahoo Finance; signals may not account for your investment horizon, taxes, corporate actions, or personal risk limits.</p>
+        </>}
+  </section>;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('screener');
   const [regimeData, setRegimeData] = useState(null);
   const [liveStatus, setLiveStatus] = useState(null);
   const [liveQuote, setLiveQuote] = useState(null);
+  const [liveQuoteError, setLiveQuoteError] = useState(null);
   const [screenerData, setScreenerData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,6 +289,10 @@ export default function App() {
   const [soundOn, setSoundOn] = useState(false);
   const [toast, setToast] = useState(null);
   const [copiedSymbol, setCopiedSymbol] = useState(null);
+  const [portfolioData, setPortfolioData] = useState(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState(null);
+  const [manualHoldings, setManualHoldings] = useState(readManualPortfolio);
   const [currentTime, setCurrentTime] = useState('');
   const searchInputRef = useRef(null);
 
@@ -225,12 +304,13 @@ export default function App() {
   }, []);
 
   const isMarketOpen = useMemo(() => {
+    if (typeof liveStatus?.market_open === 'boolean') return liveStatus.market_open;
     const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
     const get = type => parts.find(part => part.type === type)?.value;
     const day = get('weekday');
     const time = Number(get('hour')) * 100 + Number(get('minute'));
     return day !== 'Sat' && day !== 'Sun' && time >= 915 && time <= 1530;
-  }, [currentTime]);
+  }, [currentTime, liveStatus?.market_open]);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -266,40 +346,105 @@ export default function App() {
       showToast('Market scan could not be completed', 'warning');
     } finally { setLoading(false); }
   };
+  useEffect(() => {
+    try { window.localStorage.setItem(MANUAL_PORTFOLIO_KEY, JSON.stringify(manualHoldings)); }
+    catch (error) { console.warn('Could not save manual portfolio in this browser', error); }
+  }, [manualHoldings]);
+  const loadPortfolio = async (_forceRefresh = false, rows = manualHoldings) => {
+    setPortfolioLoading(true);
+    setPortfolioError(null);
+    if (!rows.length) {
+      const todayIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+      setPortfolioData({ holdings: [], source: 'Manual entries', analysis_as_of: `${todayIst}T00:00:00+05:30`, disclaimer: 'Technical research screen only, not personalized financial advice.' });
+      setPortfolioLoading(false);
+      return;
+    }
+    try {
+      const response = await fetch('/api/portfolio/manual-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holdings: rows }),
+        cache: 'no-store',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Manual portfolio analysis could not be loaded.');
+      setPortfolioData(data);
+    } catch (error) {
+      setPortfolioError(error.message || 'Manual portfolio analysis could not be loaded.');
+    } finally { setPortfolioLoading(false); }
+  };
+  const saveManualHolding = (holding, oldSymbol = null) => {
+    const next = [...manualHoldings];
+    const existingIndex = next.findIndex(item => item.symbol === (oldSymbol || holding.symbol));
+    if (existingIndex >= 0) next[existingIndex] = holding;
+    else next.push(holding);
+    setManualHoldings(next);
+    loadPortfolio(false, next);
+  };
+  const deleteManualHolding = symbol => {
+    const next = manualHoldings.filter(item => item.symbol !== symbol);
+    setManualHoldings(next);
+    loadPortfolio(false, next);
+  };
   useEffect(() => { loadRegime(); runScreener(false); }, []);
   useEffect(() => {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const reviewedDate = portfolioData?.analysis_as_of?.slice(0, 10);
+    if (activeTab === 'portfolio' && !portfolioLoading && !portfolioError && (!portfolioData || reviewedDate !== today)) loadPortfolio(false);
+  }, [activeTab, portfolioData, portfolioLoading, portfolioError, currentTime]);
+  useEffect(() => {
     let active = true;
+    let timer;
     const refreshStatus = async () => {
       try {
-        const response = await fetch('/api/market/live/status');
-        if (response.ok && active) setLiveStatus(await response.json());
+        const status = await fetchLiveStatusOnce();
+        if (active) {
+          setLiveStatus(status);
+          const untilNextOpen = status.market_open ? 5000 : status.next_market_open_at ? Date.parse(status.next_market_open_at) - Date.now() + 1000 : 60000;
+          timer = window.setTimeout(refreshStatus, Math.max(1000, untilNextOpen));
+          return;
+        }
       } catch (error) { console.error('Unable to check IIFL feed status', error); }
+      if (active) timer = window.setTimeout(refreshStatus, 30000);
     };
     refreshStatus();
-    const timer = window.setInterval(refreshStatus, 30000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; window.clearTimeout(timer); };
   }, []);
   useEffect(() => {
     if (!liveStatus?.authenticated) return undefined;
     let active = true;
+    let timer;
     const refreshQuote = async () => {
       try {
-        const response = await fetch('/api/market/live/nifty');
+        const response = await fetch('/api/market/live/nifty', { cache: 'no-store' });
         if (!response.ok) {
           if (response.status === 401 && active) {
             setLiveQuote(null);
             setLiveStatus(status => ({ ...status, authenticated: false }));
+            setLiveQuoteError('IIFL session expired. Connect again to resume live quotes.');
+          } else if (active) {
+            const detail = await response.json().catch(() => ({}));
+            setLiveQuoteError(detail.detail || `IIFL quote request failed (${response.status}).`);
           }
           return;
         }
         const quote = await response.json();
-        if (active) setLiveQuote(quote);
-      } catch (error) { console.error('Unable to refresh IIFL NIFTY quote', error); }
+        if (active) {
+          setLiveQuote(quote);
+          setLiveQuoteError(null);
+        }
+      } catch (error) {
+        console.error('Unable to refresh IIFL NIFTY quote', error);
+        if (active) setLiveQuoteError('Could not reach the IIFL quote service. Retrying automatically.');
+      } finally {
+        // Schedule the next request after this one finishes so slow responses
+        // cannot pile up or arrive out of order.
+        if (active && isMarketOpen) timer = window.setTimeout(refreshQuote, 1000);
+      }
     };
     refreshQuote();
-    const timer = window.setInterval(refreshQuote, 3000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [liveStatus?.authenticated]);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [liveStatus?.authenticated, isMarketOpen]);
   useEffect(() => {
     if (!selectedChartTrade?.symbol) return undefined;
     let active = true;
@@ -337,7 +482,7 @@ export default function App() {
   const avgRR = allSignals.length ? (allSignals.reduce((sum, signal) => sum + (signal.risk_reward || 0), 0) / allSignals.length).toFixed(1) : '—';
   const metrics = regimeData?.metrics || {};
   const liveChange = liveQuote?.change_pct;
-  const quoteFresh = liveQuote && Date.now() - Date.parse(liveQuote.received_at) < 10000;
+  const quoteFresh = liveQuote?.tick_at && Date.now() - Date.parse(liveQuote.tick_at) < 10000;
   const hasLiveQuote = liveQuote?.price != null && Number.isFinite(Number(liveQuote.price));
   const rangeLow = Number(liveQuote?.low);
   const rangeHigh = Number(liveQuote?.high);
@@ -345,10 +490,13 @@ export default function App() {
   const sessionRangePosition = hasLiveQuote && hasSessionRange
     ? Math.max(0, Math.min(100, ((Number(liveQuote.price) - rangeLow) / (rangeHigh - rangeLow)) * 100))
     : null;
-  const liveQuoteTime = liveQuote?.received_at
-    ? new Date(liveQuote.received_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  const liveQuoteTime = (liveQuote?.tick_at || liveQuote?.received_at)
+    ? new Date(liveQuote.tick_at || liveQuote.received_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
     : null;
-  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'regime' ? 'Market regime' : 'Strategy lab';
+  const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const iiflQuoteIsToday = Boolean(liveQuote?.tick_at && liveQuote.tick_at.slice(0, 10) === istToday);
+  const displayedNiftyPrice = isMarketOpen && hasLiveQuote ? liveQuote.price : iiflQuoteIsToday ? liveQuote.price : metrics.nifty_close ?? liveQuote?.price;
+  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'regime' ? 'Market regime' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : 'Strategy lab';
 
   const selectTab = id => { setActiveTab(id); playTone('click'); };
   const handleCopySetup = signal => {
@@ -374,8 +522,8 @@ export default function App() {
       <div className="rail-divider rail-lower" />
       <div className="nav-group-label">MARKETS</div>
       <nav className="side-nav">
-        {comingSoon.map(({ label, icon: Icon }) => <button key={label} className="side-nav-item future-item" title={`${label} · coming soon`} onClick={() => showToast(`${label} analysis is on the roadmap`, 'info')}>
-          <Icon size={18} strokeWidth={1.8} /><span>{label}</span><span className="soon-dot">SOON</span>
+        {marketNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={`side-nav-item ${activeTab === id ? 'selected' : ''}`} onClick={() => selectTab(id)} title={label}>
+          <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
         </button>)}
       </nav>
       <div className="rail-spacer" />
@@ -391,7 +539,7 @@ export default function App() {
           <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
           <button className="icon-button" title={soundOn ? 'Mute sound' : 'Enable sound'} onClick={toggleSound}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
           <button className="icon-button notification-button" title="Notifications" onClick={() => showToast('You’re all caught up', 'info')}><Bell size={17} /><span /></button>
-          <button className="scan-button" onClick={() => runScreener(true)} disabled={loading}>{loading ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{loading ? 'Scanning' : 'Run scan'}</button>
+          {activeTab === 'screener' && <button className="scan-button" onClick={() => runScreener(true)} disabled={loading}>{loading ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{loading ? 'Scanning' : 'Run scan'}</button>}
         </div>
       </header>
 
@@ -405,18 +553,18 @@ export default function App() {
               <div className="hero-meta"><span><i />{isMarketOpen ? 'MARKET IN SESSION' : 'LATEST MARKET SESSION'}</span><span className="hero-meta-divider" /><span>{currentTime} IST</span></div>
             </div>
             <button className="hero-feature-card" onClick={() => selectTab('regime')} aria-label="View Nifty live quote and market regime">
-              <div className="hero-feature-top"><span><i className={quoteFresh && isMarketOpen ? 'connected' : ''} />{quoteFresh && isMarketOpen ? 'IIFL · LIVE NIFTY 50' : liveStatus?.authenticated ? 'IIFL · FEED CONNECTED' : 'NIFTY 50 · DAILY DATA'}</span><ArrowUpRight size={16} /></div>
+              <div className="hero-feature-top"><span><i className={quoteFresh && isMarketOpen ? 'connected' : ''} />{!isMarketOpen ? iiflQuoteIsToday ? 'IIFL · DAY-END NIFTY 50' : 'NIFTY 50 · DAY-END CLOSE' : quoteFresh ? liveQuote.source === 'IIFL live market stream' ? 'IIFL · STREAM LIVE NIFTY 50' : 'IIFL · LIVE NIFTY 50' : liveStatus?.authenticated ? 'IIFL · FEED CONNECTED' : 'NIFTY 50 · DAILY DATA'}</span><ArrowUpRight size={16} /></div>
               <div className="hero-market-main">
                 <div className="hero-market-price-row">
-                  <strong>{hasLiveQuote ? formatPrice(liveQuote.price) : metrics.nifty_close != null ? formatPrice(metrics.nifty_close) : 'Waiting for quote'}</strong>
-                  {hasLiveQuote && liveChange != null && <span className={`hero-market-change ${liveChange >= 0 ? 'positive' : 'negative'}`}>{liveChange >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{liveChange > 0 ? '+' : ''}{liveChange}%</span>}
+                  <strong>{displayedNiftyPrice != null ? formatPrice(displayedNiftyPrice) : 'Waiting for quote'}</strong>
+                  {isMarketOpen && hasLiveQuote && liveChange != null && <span className={`hero-market-change ${liveChange >= 0 ? 'positive' : 'negative'}`}>{liveChange >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{liveChange > 0 ? '+' : ''}{liveChange}%</span>}
                 </div>
-                <span className="hero-market-subtitle">{hasLiveQuote ? `${isMarketOpen ? 'NIFTY 50 IIFL spot' : 'Last IIFL NIFTY quote'} · received ${liveQuoteTime || 'just now'} IST` : liveStatus?.authenticated ? 'Waiting for IIFL quote · showing latest Yahoo daily bar' : 'Yahoo Finance daily bar · connect IIFL for live spot data'}</span>
-                {hasLiveQuote && sessionRangePosition != null ? <div className="hero-session-range">
+                <span className="hero-market-subtitle">{!isMarketOpen ? iiflQuoteIsToday ? `Market closed · IIFL last quote ${liveQuoteTime || ''} IST` : 'Market closed · latest daily close from Yahoo Finance' : liveQuoteError || liveStatus?.stream_error ? `${liveQuoteError || liveStatus.stream_error}${hasLiveQuote ? ` · last tick ${liveQuoteTime || ''} IST` : ''}` : hasLiveQuote ? `${quoteFresh ? 'NIFTY 50 IIFL live spot' : 'IIFL quote delayed'} · tick ${liveQuoteTime || 'time unavailable'} IST` : liveStatus?.authenticated ? 'Waiting for IIFL quote · showing latest Yahoo daily bar' : 'Yahoo Finance daily bar · connect IIFL for live spot data'}</span>
+                {isMarketOpen && hasLiveQuote && sessionRangePosition != null ? <div className="hero-session-range">
                   <div className="hero-range-head"><span>TODAY’S RANGE</span><span>MARKER = LIVE PRICE</span></div>
                   <div className="hero-range-track"><i style={{ left: `${sessionRangePosition}%` }} /></div>
                   <div className="hero-range-values"><span>LOW {formatPrice(rangeLow)}</span><span>HIGH {formatPrice(rangeHigh)}</span></div>
-                </div> : <div className="hero-range-placeholder">{hasLiveQuote ? 'Session high/low not supplied by the feed' : 'Live price range appears after IIFL quote connects'}</div>}
+                </div> : <div className="hero-range-placeholder">{!isMarketOpen ? 'Intraday range hidden while market is closed' : hasLiveQuote ? 'Session high/low not supplied by the feed' : 'Live price range appears after IIFL quote connects'}</div>}
               </div>
               <div className="hero-regime-summary">
                 <div><small><i style={{ background: regimeData?.color || '#d9f2a2' }} />MARKET REGIME</small><strong>{regimeData?.title || 'Waiting for market analysis'}</strong></div>
@@ -426,7 +574,7 @@ export default function App() {
           </section>
 
           <section className="market-strip" aria-label="Market snapshot">
-            <MetricCard label="NIFTY 50" value={liveQuote?.price != null ? Number(liveQuote.price).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : metrics.nifty_close ? Number(metrics.nifty_close).toLocaleString('en-IN') : '—'} change={liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : metrics.dist_20ema_pct == null ? '—' : `${metrics.dist_20ema_pct > 0 ? '+' : ''}${metrics.dist_20ema_pct}% vs EMA`} positive={liveQuote ? liveChange >= 0 : (metrics.dist_20ema_pct ?? 0) >= 0} icon={LineChart} note={liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : liveStatus?.configured ? 'Daily close · connect live feed' : 'Daily close'} tone="lilac" />
+            <MetricCard label="NIFTY 50" value={displayedNiftyPrice != null ? Number(displayedNiftyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'} change={isMarketOpen && liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : 'Day-end close'} positive={isMarketOpen && liveQuote ? liveChange >= 0 : null} icon={LineChart} note={isMarketOpen ? liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : 'Waiting for IIFL live quote' : iiflQuoteIsToday ? `IIFL last quote · ${liveQuoteTime || ''} IST` : 'Latest daily close · Yahoo Finance'} tone="lilac" />
             <MetricCard label="Market breadth" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'Broadening' : 'Narrow'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="above 50 day average" tone="mint" />
             <MetricCard label="Active setups" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} high alignment`} positive={optimalCount > 0} icon={Target} note={`Average 1:${avgRR} risk / reward`} tone="peach" />
             <article className="regime-card" onClick={() => selectTab('regime')} role="button" tabIndex="0" onKeyDown={event => event.key === 'Enter' && selectTab('regime')}>
@@ -447,6 +595,9 @@ export default function App() {
           <footer className="page-footer"><span><ShieldCheck size={14} /> Research tools for informed decisions</span><span>Data may be delayed. Verify before trading.</span></footer>
         </>}
 
+        {activeTab === 'portfolio' && <PortfolioView data={portfolioData} loading={portfolioLoading} error={portfolioError} onSaveHolding={saveManualHolding} onDeleteHolding={deleteManualHolding} onRefresh={() => loadPortfolio(true)} />}
+        {activeTab === 'intraday' && <TradingStrategiesView mode="intraday" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
+        {activeTab === 'options' && <TradingStrategiesView mode="options" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
         {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market regime</h1><p>Understand the conditions shaping today’s opportunities.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
         {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">RESEARCH WORKSPACE</div><h1>Strategy lab</h1><p>Explore how your swing strategies have behaved across historical data.</p></div><span className="research-badge"><BookOpen size={14} /> Research mode</span></div><BacktestLab /></section>}
       </main>

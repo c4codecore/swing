@@ -76,7 +76,7 @@ class ScreenerEngine:
                     try:
                         signals = future.result()
                     except Exception as exc:
-                        logger.warning("Screener data/strategy failure for %s", symbol, exc_info=True)
+                        logger.warning("Screener data/strategy failure for %s: %s", symbol, exc)
                         failures.append({"symbol": symbol.replace(".NS", ""), "reason": str(exc)[:160]})
                         continue
                     for signal in signals:

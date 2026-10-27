@@ -31,10 +31,10 @@ def calculate_market_breadth(sample_size: int = 15) -> Dict[str, Any]:
                 valid_count += 1
                 above_20 += bool(is_above_20)
                 above_50 += bool(is_above_50)
-            except Exception:
+            except Exception as exc:
                 symbol = futures[future]
                 failures.append(symbol)
-                logger.warning("Breadth data unavailable for %s", symbol, exc_info=True)
+                logger.warning("Breadth data unavailable for %s: %s", symbol, exc)
 
     return {
         "pct_above_20ema": round(above_20 / valid_count * 100, 1) if valid_count else None,
