@@ -1,11 +1,11 @@
 @echo off
-title QUANTUM SWING - Server Shutdown
+title MarketVoice - Server Shutdown
 color 0C
 cls
 
 echo.
 echo  ============================================================
-echo     🛑 QUANTUM SWING — Stopping All Servers
+echo     🛑 MarketVoice — Stopping All Servers
 echo  ============================================================
 echo.
 
@@ -16,7 +16,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8001" ^| findstr "LISTENING
 )
 
 echo.
-echo   ✅ All Quantum Swing servers stopped.
+echo   ✅ All MarketVoice servers stopped.
 echo.
 
 timeout /t 3 >nul

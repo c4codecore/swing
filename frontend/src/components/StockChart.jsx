@@ -175,11 +175,11 @@ export default function StockChart({ symbol, tradePlan }) {
           </div>
 
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '0.75rem' }}>
-            <span>O: <b style={{ color: '#fff' }}>₹{activeCandle?.open}</b></span>
-            <span>H: <b style={{ color: '#fff' }}>₹{activeCandle?.high}</b></span>
-            <span>L: <b style={{ color: '#fff' }}>₹{activeCandle?.low}</b></span>
-            <span>C: <b style={{ color: isCandleGreen ? '#10b981' : '#f43f5e' }}>₹{activeCandle?.close}</b></span>
-            {activeCandle?.volume && <span>Vol: <b style={{ color: '#94a3b8' }}>{(activeCandle.volume / 1000).toFixed(0)}k</b></span>}
+            <span>Open: <b style={{ color: '#fff' }}>₹{activeCandle?.open}</b></span>
+            <span>High: <b style={{ color: '#fff' }}>₹{activeCandle?.high}</b></span>
+            <span>Low: <b style={{ color: '#fff' }}>₹{activeCandle?.low}</b></span>
+            <span>Close: <b style={{ color: isCandleGreen ? '#10b981' : '#f43f5e' }}>₹{activeCandle?.close}</b></span>
+            {activeCandle?.volume && <span>Shares traded: <b style={{ color: '#94a3b8' }}>{(activeCandle.volume / 1000).toFixed(0)}k</b></span>}
           </div>
         </div>
 
@@ -465,19 +465,19 @@ export default function StockChart({ symbol, tradePlan }) {
         <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: 12, height: 2, background: '#38bdf8', display: 'inline-block' }}></span>
-            <span style={{ color: '#38bdf8' }}>EMA 20</span>
+            <span style={{ color: '#38bdf8' }}>20-day average price</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: 12, height: 2, background: '#f59e0b', display: 'inline-block' }}></span>
-            <span style={{ color: '#f59e0b' }}>EMA 50</span>
+            <span style={{ color: '#f59e0b' }}>50-day average price</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: 12, height: 2, background: '#a855f7', display: 'inline-block' }}></span>
-            <span style={{ color: '#a855f7' }}>RSI (14): {activeCandle?.rsi ?? '-'}</span>
+            <span style={{ color: '#a855f7' }}>Recent price strength: {activeCandle?.rsi ?? '-'}</span>
           </span>
         </div>
         <div>
-          <span>Crosshair scrub active • Real-time indicator telemetry</span>
+          <span>Move over the chart to see the price for each date</span>
         </div>
       </div>
     </div>

@@ -1,11 +1,11 @@
 @echo off
-title QUANTUM SWING - Server Launcher
+title MarketVoice - Server Launcher
 color 0B
 cls
 
 echo.
 echo  ============================================================
-echo     ⚡ QUANTUM // AETHER — NSE Systematic Trading Studio
+echo     📈 MarketVoice — NSE Systematic Trading Studio
 echo  ============================================================
 echo.
 echo  [1] Building latest frontend...

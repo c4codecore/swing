@@ -65,30 +65,30 @@ def analyze_market_regime() -> Dict[str, Any]:
     pct_above_50 = breadth["pct_above_50ema"]
 
     if rsi_14 < 30 and dist_20ema < -4.0:
-        regime, title, color = "EXTREME_PANIC_OVERSOLD", "Extreme Panic / Capitulation", REGIME_COLORS["EXTREME_PANIC_OVERSOLD"]
-        description = "Market is heavily oversold. Look for confirmed capitulation reversals with tight risk controls."
+        regime, title, color = "EXTREME_PANIC_OVERSOLD", "Heavy selling; prices are far below normal", REGIME_COLORS["EXTREME_PANIC_OVERSOLD"]
+        description = "Prices have fallen sharply. A bounce may happen, but they can keep falling too. Extra care is needed."
         allowed = ["capitulation_reversal", "relative_strength"]
-        action, exposure = "Trade high-conviction oversold bounces only; use tight stops and take profits quickly.", 30
+        action, exposure = "If you trade, keep the amount small and decide in advance how much loss you can accept.", 30
     elif current_close > e20 and e20 > e50 and current_close > e200 and e20_slope_5d > 0.3 and pct_above_50 is not None and pct_above_50 >= 60:
-        regime, title, color = "STRONG_BULL", "Strong Bullish Trend", REGIME_COLORS["STRONG_BULL"]
-        description = "Benchmark trend and available market breadth confirm broad strength."
+        regime, title, color = "STRONG_BULL", "Most tracked shares are rising", REGIME_COLORS["STRONG_BULL"]
+        description = "Nifty and most tracked shares have been moving upward. A market-wide rise can still turn down."
         allowed = ["trend_pullback", "volatility_squeeze", "relative_strength"]
-        action, exposure = "Favor trend pullbacks and breakouts with predefined stops.", 100
+        action, exposure = "The market looks supportive, but plan an exit before buying and avoid using money you may need soon.", 100
     elif current_close >= e50 and current_close > e200 and rsi_14 >= 45:
-        regime, title, color = "PULLBACK_BULL", "Pullback in Bull Market", REGIME_COLORS["PULLBACK_BULL"]
-        description = "The benchmark remains above key trend support; wait for price confirmation at support."
+        regime, title, color = "PULLBACK_BULL", "Longer trend is up; prices have dipped", REGIME_COLORS["PULLBACK_BULL"]
+        description = "Nifty is still above its longer-term average, but prices have recently dipped. Wait to see if they turn back up."
         allowed = ["trend_pullback", "relative_strength"]
-        action, exposure = "Favor selective pullbacks with confirmed volume and controlled risk.", 75
+        action, exposure = "Be selective. Wait for the share price to steady before considering a trade.", 75
     elif current_close < e50 or e20_slope_5d < -0.8:
-        regime, title, color = "BEARISH_CORRECTION", "Bearish Correction / Downtrend", REGIME_COLORS["BEARISH_CORRECTION"]
-        description = "Benchmark trend is weak. Long setups need exceptional relative strength and strict risk limits."
+        regime, title, color = "BEARISH_CORRECTION", "The market is falling", REGIME_COLORS["BEARISH_CORRECTION"]
+        description = "Nifty is below its recent average or falling quickly. New share purchases may carry extra risk."
         allowed = ["relative_strength", "capitulation_reversal"]
-        action, exposure = "Preserve capital; use strict stops and smaller exposure.", 25
+        action, exposure = "Consider keeping more money aside. If you trade, keep the amount small and set a clear exit price.", 25
     else:
-        regime, title, color = "SIDEWAYS_CHOPPY", "Sideways / Choppy Range", REGIME_COLORS["SIDEWAYS_CHOPPY"]
-        description = "The benchmark has no clear directional trend; avoid chasing unconfirmed breakouts."
+        regime, title, color = "SIDEWAYS_CHOPPY", "The market has no clear direction", REGIME_COLORS["SIDEWAYS_CHOPPY"]
+        description = "Nifty has not been moving clearly up or down. Sudden moves can reverse, so avoid rushing in."
         allowed = ["volatility_squeeze", "relative_strength"]
-        action, exposure = "Use moderate exposure and wait for confirmation near range boundaries.", 50
+        action, exposure = "Wait for a clearer direction. If you trade, use only an amount you can afford to risk.", 50
 
     return {
         "regime": regime, "title": title, "color": color, "description": description,

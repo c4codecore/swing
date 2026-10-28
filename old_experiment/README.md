@@ -47,7 +47,7 @@ A plug-and-play Python screener + backtester that scans **Nifty 100 stocks** aga
 ## 🗂️ Project Structure
 
 ```
-swing_trading/
+MarketVoice/
 │
 ├── core/                      # 🧠 Core trading engine & data layer
 │   ├── __init__.py
@@ -105,7 +105,7 @@ swing_trading/
 
 ```bash
 git clone <repo-url>
-cd swing_trading
+cd MarketVoice
 ```
 
 ### 2. Install dependencies

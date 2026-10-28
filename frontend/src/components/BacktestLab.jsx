@@ -3,6 +3,13 @@ import { Play, TrendingUp, AlertTriangle, ShieldCheck, Activity, Award, BarChart
 import { playTone } from '../utils/soundFx';
 
 export default function BacktestLab() {
+  const simpleStrategyLabels = {
+    trend_pullback: 'Buy a dip in a rising share',
+    relative_strength: 'Shares doing better than Nifty',
+    capitulation_reversal: 'Possible bounce after a sharp fall',
+    volatility_squeeze: 'Breakout after a quiet period',
+    multi_factor: 'Several positive checks agree',
+  };
   const [strategies, setStrategies] = useState([]);
   const [selectedStrategy, setSelectedStrategy] = useState('relative_strength');
   const [period, setPeriod] = useState('1y');
@@ -233,10 +240,10 @@ export default function BacktestLab() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
             <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#38bdf8', letterSpacing: '0.1em' }}>
-              [SYSTEMATIC WALK-FORWARD ENGINE]
+              CHECK A STRATEGY USING PAST PRICES
             </div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 800 }}>
-              Quantitative Backtest Laboratory
+              How would this strategy have done?
             </h2>
           </div>
 
@@ -246,7 +253,7 @@ export default function BacktestLab() {
             className="btn-cyber-primary"
           >
             <Play size={15} fill="#fff" />
-            {loading ? 'Simulating Trades...' : 'Run Simulation'}
+            {loading ? 'Checking past trades…' : 'Run past-price check'}
           </button>
         </div>
 
@@ -254,7 +261,7 @@ export default function BacktestLab() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-              Strategy Model
+              How to find shares
             </label>
             <select 
               value={selectedStrategy}
@@ -263,14 +270,14 @@ export default function BacktestLab() {
               style={{ width: '100%', background: 'rgba(0,0,0,0.4)' }}
             >
               {strategies.map(s => (
-                <option key={s.id} value={s.id}>{s.title}</option>
+                <option key={s.id} value={s.id}>{simpleStrategyLabels[s.id] || s.title}</option>
               ))}
             </select>
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-              Simulation Horizon
+              Past price period
             </label>
             <select 
               value={period}
@@ -287,7 +294,7 @@ export default function BacktestLab() {
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-              Max Holding Time ({holdingDays} Days)
+              Sell after at most ({holdingDays} market days)
             </label>
             <input 
               type="range" 
@@ -301,7 +308,7 @@ export default function BacktestLab() {
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-              Risk Per Trade ({riskPct}%)
+              Maximum account loss per trade ({riskPct}%)
             </label>
             <input 
               type="range" 
@@ -314,6 +321,7 @@ export default function BacktestLab() {
             />
           </div>
         </div>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.78rem', lineHeight: 1.5, marginTop: '1rem' }}>This is a check using old prices, not a promise about future results. Fees and real-world delays can change what happens.</p>
       </div>
 
       {/* Results Overview */}
@@ -321,61 +329,61 @@ export default function BacktestLab() {
         <div className="glass-card empty-state" style={{ padding: '5rem 1rem' }}>
           <div className="live-dot" style={{ margin: '0 auto 1.5rem', width: 14, height: 14, background: '#38bdf8' }} />
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: '#fff' }}>
-            EXECUTING VECTORIZED BACKTEST ACROSS ALL HISTORICAL BARS...
+            Checking how this rule would have worked on past share prices…
           </div>
         </div>
       ) : results ? (
         <>
-          {/* Institutional KPI Cards Grid */}
+          {/* Simple result cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             <div className="glass-card" style={{ padding: '1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                Total Return
+                Change in test account
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.total_return_pct >= 0 ? '#10b981' : '#f43f5e' }}>
                 {results.total_return_pct >= 0 ? '+' : ''}{results.total_return_pct}%
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Base ₹100 Portfolio</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Starting with ₹100</div>
             </div>
 
             <div className="glass-card" style={{ padding: '1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                Win Rate
+                Trades that made money
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.win_rate_pct >= 50 ? '#10b981' : '#f59e0b' }}>
                 {results.win_rate_pct}%
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>{results.total_trades} Completed Trades</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Out of {results.total_trades} finished trades</div>
             </div>
 
             <div className="glass-card" style={{ padding: '1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                Profit Factor
+                Total gains compared with losses
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.profit_factor >= 1.5 ? '#10b981' : '#f59e0b' }}>
                 {results.profit_factor == null ? (results.total_trades ? '∞' : '—') : results.profit_factor}
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Gross Win / Gross Loss</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Above 1 means gains were larger</div>
             </div>
 
             <div className="glass-card" style={{ padding: '1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                Max Drawdown
+                Largest fall from a high
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: '#f43f5e' }}>
                 -{results.max_drawdown_pct}%
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Peak-to-Trough Decline</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Biggest drop before recovery</div>
             </div>
 
             <div className="glass-card" style={{ padding: '1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                Avg Win / Loss
+                Average gain / average loss
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.4rem' }}>
                 <span style={{ color: '#10b981' }}>+{results.avg_win_pct}%</span> / <span style={{ color: '#f43f5e' }}>-{results.avg_loss_pct}%</span>
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Per Position Edge</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>For each finished trade</div>
             </div>
           </div>
 
@@ -383,10 +391,10 @@ export default function BacktestLab() {
           <div className="glass-card" style={{ marginBottom: '2rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <TrendingUp size={18} color="#10b981" /> Portfolio Equity Curve (Compounded Growth)
+                <TrendingUp size={18} color="#10b981" /> Test account value over time
               </h3>
               <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>
-                HOVER TO SCRUB TIMELINE
+                Move over the chart to see each date
               </span>
             </div>
             {renderEquityCurve()}
@@ -396,17 +404,17 @@ export default function BacktestLab() {
           {results.regime_breakdown && Object.keys(results.regime_breakdown).length > 0 && (
             <div className="glass-card" style={{ marginBottom: '2rem' }}>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Activity size={18} color="#a855f7" /> Regime-Specific Performance Breakdown
+                <Activity size={18} color="#a855f7" /> Results in different market moods
               </h3>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-dim)', textAlign: 'left' }}>
-                      <th style={{ padding: '0.75rem 1rem' }}>MARKET REGIME</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>MARKET MOOD</th>
                       <th style={{ padding: '0.75rem 1rem' }}>TRADES</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>WIN RATE</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>TOTAL RETURN</th>
-                      <th style={{ padding: '0.75rem 1rem' }}>PROFIT FACTOR</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>MADE MONEY</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>ACCOUNT CHANGE</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>GAINS VS LOSSES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -436,20 +444,20 @@ export default function BacktestLab() {
             <div className="glass-card">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Award size={18} color="#38bdf8" /> Simulated Trade Log ({filteredTrades.length})
+                  <Award size={18} color="#38bdf8" /> Past trades in this check ({filteredTrades.length})
                 </h3>
 
                 <div className="trade-log-filters">
-                  {renderTradeFilter('Outcome', [
+                  {renderTradeFilter('Result', [
                     { value: 'ALL', label: 'All' }, { value: 'WIN', label: 'Wins' }, { value: 'LOSS', label: 'Losses' },
                   ], tradeFilter, setTradeFilter)}
-                  {renderTradeFilter('Nifty regime', [
+                  {renderTradeFilter('Market mood', [
                     { value: 'ALL', label: 'All' }, { value: 'BULLISH', label: 'Bullish' }, { value: 'BEARISH', label: 'Bearish' },
                   ], regimeFilter, setRegimeFilter)}
                 </div>
               </div>
 
-              <p className="trade-regime-note">Bullish/Bearish shows the Nifty market regime on the strategy signal date. Combine it with Wins or Losses to compare outcomes. Select a symbol to see its day-by-day price path.</p>
+              <p className="trade-regime-note">Use these filters to compare winning and losing trades in rising or falling markets. Select a share to see its price changes by day.</p>
 
               <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
@@ -484,8 +492,8 @@ export default function BacktestLab() {
                             >{t.symbol}<ChevronDown size={14} className={isExpanded ? 'rotated' : ''} /></button>
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>
-                            <span className={`trade-regime-chip ${t.regime === 'BULLISH' ? 'bullish' : t.regime === 'BEARISH' ? 'bearish' : 'unknown'}`} title="Nifty market regime when the strategy signal was generated">
-                              {t.regime === 'BULLISH' ? 'Bullish' : t.regime === 'BEARISH' ? 'Bearish' : 'Unknown'}
+                            <span className={`trade-regime-chip ${t.regime === 'BULLISH' ? 'bullish' : t.regime === 'BEARISH' ? 'bearish' : 'unknown'}`} title="Whether Nifty was generally rising or falling that day">
+                              {t.regime === 'BULLISH' ? 'Market rising' : t.regime === 'BEARISH' ? 'Market falling' : 'Unknown'}
                             </span>
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.entry_date}</td>
@@ -505,7 +513,7 @@ export default function BacktestLab() {
                               color: isWin ? '#10b981' : '#f43f5e',
                               border: `1px solid ${isWin ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`
                             }}>
-                              {t.exit_reason}
+                              {({ TARGET_HIT: 'Target price reached', STOP_LOSS: 'Loss limit reached', TIME_EXIT: 'Time limit ended', END_OF_DATA: 'Price history ended' }[t.exit_reason] || t.exit_reason?.replace(/_/g, ' ').toLowerCase())}
                             </span>
                           </td>
                         </tr>

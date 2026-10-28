@@ -1,4 +1,4 @@
-# ⚡ QUANTUM SWING (v2.0 Systematic Platform)
+# 📈 MarketVoice (v2.0 Systematic Trading Platform)
 
 A full-stack, institutional-grade quantitative swing trading platform for the **NSE Nifty 100 universe**, engineered from the ground up to solve the fatal flaws of traditional naive trend-following screeners.
 
@@ -24,7 +24,7 @@ In previous iterations, two major problems plagued the system:
 ## 🏗️ Project Architecture
 
 ```
-swing_trading/
+MarketVoice/
 │
 ├── run_app.py                   # 🚀 One-click unified application launcher
 ├── README.md                    # Platform documentation
@@ -68,15 +68,26 @@ swing_trading/
 
 The `multi_factor` screener option scores long setups using EMA trend structure and slope, relative strength versus Nifty, RSI and ADX, volume participation, a 20-session breakout, distance from the 20-day EMA, benchmark context, and stop/target geometry. The score is a checklist score, **not** a probability of profit.
 
+The **Stock analysis** tab searches NSE's current main-board equity and SME symbol lists by ticker or company name, then shows a selected stock's price chart, technical indicators, company fundamentals, and recent headlines. The exchange symbol list refreshes daily. Its 1-month and 3-month price ranges are historical-volatility scenarios, not reliable predictions or trade recommendations. The screener continues to use the smaller configured liquid-stock universe.
+
+The **History** tab records each Overview setup once per signal date, symbol, and strategy in PostgreSQL. Open setups are checked against completed daily candles until target 1, stop-loss, or the selected 15- or 30-session time exit. On first database connection, existing history in `backend/data/marketvoice_history.sqlite3` is imported once; the SQLite file is retained as a backup.
+
+The **Volume flow** tab ranks up to 10 or 20 liquid-watchlist stocks by a 20-session price/volume accumulation and distribution proxy. It weights estimated turnover (`close × volume`) by where each candle closes within its range and applies a minimum average-turnover filter. This is not official delivery data and cannot identify institutional, FII, or DII trades.
+
+Manual portfolio holdings are also saved in PostgreSQL; the browser copy is retained as a recovery fallback. Add, edit, and remove actions update the persistent portfolio. Configure `DATABASE_URL` in `backend/.env` using `backend/.env.example` as a template. Create the target PostgreSQL database before starting the backend. Any legacy portfolio SQLite file is imported once if present.
+
 For live screening, recent Yahoo Finance headlines are fetched through `yfinance`. Headline keyword matches can flag possible event risk, and a failed news lookup is shown as a manual-review state. This is a limited headline screen: it does not understand context or replace exchange filings, earnings calendars, or a human reading the full story. The historical backtester uses price history only; it cannot replay historical news from this feed. Treat every setup as research for review, not an automatic trade instruction.
 
 ## 🚀 How to Run
 
 ### Quick Start (Single Command):
+1. Install the backend dependencies: `python -m pip install -r backend/requirements.txt`.
+2. Copy `backend/.env.example` to `backend/.env`, set `DATABASE_URL`, and create that PostgreSQL database.
+3. Start the app:
 ```bash
 python run_app.py
 ```
-This runs the FastAPI server, serves the production-compiled frontend, and automatically opens **`http://127.0.0.1:8000`** in your browser.
+This runs the FastAPI server, serves the production-compiled frontend, and automatically opens **`http://127.0.0.1:8001`** in your browser.
 
 ### Development Mode (Concurrent):
 If you want to edit frontend code with live hot-reloading:

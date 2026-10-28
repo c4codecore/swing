@@ -4,5 +4,8 @@
 backend/.env
 backend/.env.*
 !backend/.env.example
+backend/data/*.sqlite3
+backend/data/*.sqlite3-shm
+backend/data/*.sqlite3-wal
 __pycache__/
 *.py[cod]

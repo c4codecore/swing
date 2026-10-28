@@ -28,7 +28,7 @@ pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-pyt
    - Go to **Credentials** -> **Create Credentials** -> **OAuth Client ID**.
    - Application Type: **Desktop Application**.
    - Download the credentials JSON file.
-   - Rename the downloaded file to `client_secret.json` and save it to the project root directory (`swing_trading/client_secret.json`).
+   - Rename the downloaded file to `client_secret.json` and save it to the project root directory (`MarketVoice/client_secret.json`).
 
 ---
 

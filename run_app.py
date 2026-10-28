@@ -1,6 +1,6 @@
 """
 Unified Application Launcher
-Runs the complete Quantitative Swing Trading Full-Stack Platform.
+Runs the complete MarketVoice systematic trading platform.
 """
 import os
 import sys
@@ -10,7 +10,7 @@ import time
 
 def main():
     print("=" * 60)
-    print(" 🚀 Starting QUANTUM SWING Full-Stack Trading Platform")
+    print(" 🚀 Starting MarketVoice Trading Platform")
     print("=" * 60)
 
     # Ensure backend is in python path

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, AudioLines, BarChart3, Bell, BookOpen,
   CandlestickChart, Check, ChevronDown, CircleHelp, Compass, Copy, LayoutDashboard,
-  LineChart, MoreHorizontal, Search, ShieldCheck,
+  History, LineChart, MoreHorizontal, Search, ShieldCheck,
   Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio
 } from 'lucide-react';
 import appLogo from './assets/logo.png';
@@ -11,20 +11,33 @@ import RegimeView from './components/RegimeView';
 import BacktestLab from './components/BacktestLab';
 import CyberToast from './components/CyberToast';
 import TradingStrategiesView from './components/TradingStrategiesView';
+import StockAnalysisView from './components/StockAnalysisView';
+import SignalHistoryView from './components/SignalHistoryView';
+import InstitutionalFlowView from './components/InstitutionalFlowView';
 import { playTone, setSoundEnabled } from './utils/soundFx';
 
 const navigation = [
   { id: 'screener', label: 'Overview', icon: LayoutDashboard, section: 'WORKSPACE' },
-  { id: 'regime', label: 'Market regime', icon: Compass },
-  { id: 'backtest', label: 'Strategy lab', icon: BarChart3 },
+  { id: 'history', label: 'History', icon: History },
+  { id: 'flow-watch', label: 'Buying & selling', icon: Volume2 },
+  { id: 'stock-analysis', label: 'Stock analysis', icon: Search },
+  { id: 'regime', label: 'Market mood', icon: Compass },
+  { id: 'backtest', label: 'Test a strategy', icon: BarChart3 },
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },
 ];
 const marketNavigation = [
   { id: 'intraday', label: 'Intraday', icon: CandlestickChart },
   { id: 'options', label: 'Options', icon: Activity },
 ];
-const MANUAL_PORTFOLIO_KEY = 'swing-trading-manual-portfolio-v1';
+const MANUAL_PORTFOLIO_KEY = 'marketvoice-manual-portfolio-v1';
+const LEGACY_MANUAL_PORTFOLIO_KEY = 'swing-trading-manual-portfolio-v1';
+const HISTORY_HOLDING_DAYS_KEY = 'marketvoice-history-holding-days-v1';
 let liveStatusRequest = null;
+
+function readHistoryHoldingDays() {
+  try { return window.localStorage.getItem(HISTORY_HOLDING_DAYS_KEY) === '30' ? 30 : 15; }
+  catch { return 15; }
+}
 
 function fetchLiveStatusOnce() {
   if (!liveStatusRequest) {
@@ -40,7 +53,10 @@ function fetchLiveStatusOnce() {
 
 function readManualPortfolio() {
   try {
-    const saved = JSON.parse(window.localStorage.getItem(MANUAL_PORTFOLIO_KEY) || '[]');
+    const savedValue = window.localStorage.getItem(MANUAL_PORTFOLIO_KEY)
+      ?? window.localStorage.getItem(LEGACY_MANUAL_PORTFOLIO_KEY)
+      ?? '[]';
+    const saved = JSON.parse(savedValue);
     return Array.isArray(saved) ? saved.filter(item => item && typeof item.symbol === 'string' && Number(item.quantity) > 0 && Number(item.average_price) > 0) : [];
   } catch {
     return [];
@@ -56,6 +72,27 @@ function formatPrice(value, fallback = '—') {
 function formatCompact(value) {
   const number = Number(value);
   return value == null || !Number.isFinite(number) ? '—' : new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 2 }).format(number);
+}
+
+function simpleStrategyName(strategy, fallback = '') {
+  const names = {
+    trend_pullback: 'Buy a dip in a rising share',
+    relative_strength: 'Shares doing better than Nifty',
+    capitulation_reversal: 'Possible bounce after a sharp fall',
+    volatility_squeeze: 'Breakout after a quiet period',
+    multi_factor: 'Several positive checks agree',
+  };
+  return names[strategy] || fallback || strategy || 'Share to review';
+}
+
+function simpleSignalStatus(status) {
+  const labels = {
+    REVIEW_NEWS_UNAVAILABLE: 'News could not be checked',
+    AVOID_PENDING_EVENT_REVIEW: 'Read important news first',
+    REVIEW_HEADLINES: 'Read recent news first',
+    PENDING_NEWS_REVIEW: 'News check needed',
+  };
+  return labels[status] || status;
 }
 
 function formatPercent(value, providerUsesPercent = false) {
@@ -112,34 +149,34 @@ function classifyMetric(section, label, value, raw = {}) {
   const number = Number(value);
   if (section === 'technical') {
     if (label === 'Trend') return /bullish|above ema/i.test(String(value)) ? 'good' : 'bad';
-    if (label === 'EMA 20 / 50 / 200') {
+    if (label === 'Average price trend') {
       if (raw.ema20 == null || raw.ema50 == null || raw.ema200 == null || raw.close == null) return 'neutral';
       if (raw.close > raw.ema20 && raw.ema20 > raw.ema50 && raw.ema50 > raw.ema200) return 'good';
       return raw.close < raw.ema50 ? 'bad' : 'neutral';
     }
-    if (label === 'RSI (14)') return number >= 45 && number <= 65 ? 'good' : number > 70 || number < 35 ? 'bad' : 'neutral';
-    if (label === 'ADX (14)') return number >= 25 ? 'good' : number < 15 ? 'watch' : 'neutral';
-    if (label === 'ATR (14)') return raw.atr14_pct >= 5 ? 'watch' : 'neutral';
-    if (label === 'Volume / 20-day avg') return raw.volume_ratio20 >= 1.5 ? 'good' : raw.volume_ratio20 < 0.7 ? 'watch' : 'neutral';
-    if (label === 'Return (20 / 63 sessions)') {
+    if (label === 'Recent price strength') return number >= 45 && number <= 65 ? 'good' : number > 70 || number < 35 ? 'bad' : 'neutral';
+    if (label === 'Trend strength') return number >= 25 ? 'good' : number < 15 ? 'watch' : 'neutral';
+    if (label === 'Usual daily price movement') return raw.atr14_pct >= 5 ? 'watch' : 'neutral';
+    if (label === 'Trading activity vs usual') return raw.volume_ratio20 >= 1.5 ? 'good' : raw.volume_ratio20 < 0.7 ? 'watch' : 'neutral';
+    if (label === 'Price change over 1 and 3 months') {
       const returns = String(value).match(/-?\d+(?:\.\d+)?/g)?.map(Number) || [];
       return returns.length === 2 && returns.every((item) => item > 0) ? 'good' : returns.length === 2 && returns.every((item) => item < 0) ? 'bad' : 'neutral';
     }
-    if (label === 'Mansfield RS vs Nifty') return number > 0 ? 'good' : number < 0 ? 'bad' : 'neutral';
+    if (label === 'Performance vs Nifty') return number > 0 ? 'good' : number < 0 ? 'bad' : 'neutral';
   }
 
   if (section === 'fundamental') {
-    if (['EPS (TTM)', 'Revenue growth', 'Earnings growth', 'Profit margin', 'Operating margin', 'Free cash flow'].includes(label)) {
-      const rawValue = label === 'EPS (TTM)' ? raw.eps_ttm
+    if (['Earnings for each share', 'Revenue growth', 'Earnings growth', 'Profit left from sales', 'Operating margin', 'Cash left after spending'].includes(label)) {
+      const rawValue = label === 'Earnings for each share' ? raw.eps_ttm
         : label === 'Revenue growth' ? raw.revenue_growth
           : label === 'Earnings growth' ? raw.earnings_growth
-            : label === 'Profit margin' ? raw.profit_margin
+            : label === 'Profit left from sales' ? raw.profit_margin
               : label === 'Operating margin' ? raw.operating_margin : raw.free_cash_flow;
       return rawValue > 0 ? 'good' : rawValue < 0 ? 'bad' : 'neutral';
     }
-    if (label === 'Return on equity') return raw.return_on_equity >= 0.15 ? 'good' : raw.return_on_equity < 0 ? 'bad' : 'neutral';
-    if (label === 'Debt / equity (reported %)') return raw.debt_to_equity <= 100 ? 'good' : raw.debt_to_equity > 200 ? 'bad' : 'watch';
-    if (label === 'Current ratio') return raw.current_ratio >= 1.5 ? 'good' : raw.current_ratio < 1 ? 'bad' : 'neutral';
+    if (label === 'Profit earned on shareholder money') return raw.return_on_equity >= 0.15 ? 'good' : raw.return_on_equity < 0 ? 'bad' : 'neutral';
+    if (label === 'Debt compared with shareholder money') return raw.debt_to_equity <= 100 ? 'good' : raw.debt_to_equity > 200 ? 'bad' : 'watch';
+    if (label === 'Money available for near-term bills') return raw.current_ratio >= 1.5 ? 'good' : raw.current_ratio < 1 ? 'bad' : 'neutral';
   }
   return 'neutral';
 }
@@ -148,15 +185,15 @@ function ResearchGrid({ items }) {
   const available = items.filter(([, value]) => value !== '—');
   if (!available.length) return <p className="research-empty">Provider did not return these fields.</p>;
   return <>
-    <p className="research-signal-legend"><span className="signal-good">Green: supportive</span><span className="signal-bad">Red: caution</span><span>Grey: context only</span></p>
+    <p className="research-signal-legend"><span className="signal-good">Green: looks good</span><span className="signal-bad">Red: needs care</span><span>Grey: extra information</span></p>
     <div className="research-grid">{available.map(([label, value, tone = 'neutral']) => <div className={`research-value signal-card-${tone}`} key={label}>
-      <span>{label}</span><strong>{value}</strong><small className={`research-signal-label signal-${tone}`}>{tone === 'good' ? 'Supportive' : tone === 'bad' ? 'Caution' : tone === 'watch' ? 'Watch' : 'Context'}</small>
+      <span>{label}</span><strong>{value}</strong><small className={`research-signal-label signal-${tone}`}>{tone === 'good' ? 'Looks good' : tone === 'bad' ? 'Needs care' : tone === 'watch' ? 'Keep an eye' : 'For information'}</small>
     </div>)}</div>
   </>;
 }
 
 function StockResearchDetails({ data, loading, error }) {
-  if (loading) return <div className="research-loading"><RefreshCw size={15} /> Loading recent news, technicals and fundamentals…</div>;
+  if (loading) return <div className="research-loading"><RefreshCw size={15} /> Loading recent news, price trends and company details…</div>;
   if (error && !data) return <div className="setup-rationale research-error">Stock details could not load: {error}</div>;
   if (!data) return null;
 
@@ -168,50 +205,51 @@ function StockResearchDetails({ data, loading, error }) {
   const technicalItems = [
     technicalValue('Last daily close', formatPrice(technical.close)),
     technicalValue('Trend', technical.trend || '—'),
-    technicalValue('EMA 20 / 50 / 200', technical.ema20 != null ? `${formatPrice(technical.ema20)} / ${formatPrice(technical.ema50)} / ${formatPrice(technical.ema200)}` : '—'),
-    technicalValue('RSI (14)', technical.rsi14 != null ? technical.rsi14.toFixed(1) : '—'),
-    technicalValue('ADX (14)', technical.adx14 != null ? technical.adx14.toFixed(1) : '—'),
-    technicalValue('ATR (14)', technical.atr14_pct != null ? `${technical.atr14_pct}% of price` : '—'),
-    technicalValue('Volume / 20-day avg', technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'),
-    technicalValue('Return (20 / 63 sessions)', technical.return20_pct != null && technical.return63_pct != null ? `${technical.return20_pct}% / ${technical.return63_pct}%` : '—'),
-    technicalValue('Mansfield RS vs Nifty', technical.mansfield_rs63 != null ? `${technical.mansfield_rs63 > 0 ? '+' : ''}${technical.mansfield_rs63}%` : '—'),
+    technicalValue('Average price trend', technical.ema20 != null ? `${formatPrice(technical.ema20)} / ${formatPrice(technical.ema50)} / ${formatPrice(technical.ema200)}` : '—'),
+    technicalValue('Recent price strength', technical.rsi14 != null ? technical.rsi14.toFixed(1) : '—'),
+    technicalValue('Trend strength', technical.adx14 != null ? technical.adx14.toFixed(1) : '—'),
+    technicalValue('Usual daily price movement', technical.atr14_pct != null ? `${technical.atr14_pct}% of price` : '—'),
+    technicalValue('Trading activity vs usual', technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'),
+    technicalValue('Price change over 1 and 3 months', technical.return20_pct != null && technical.return63_pct != null ? `${technical.return20_pct}% / ${technical.return63_pct}%` : '—'),
+    technicalValue('Performance vs Nifty', technical.mansfield_rs63 != null ? `${technical.mansfield_rs63 > 0 ? '+' : ''}${technical.mansfield_rs63}%` : '—'),
     technicalValue('Data date', technical.as_of || '—'),
   ];
   const currency = fundamentals.currency || 'INR';
   const fundamentalItems = [
-    fundamentalValue('Market cap', formatMoney(fundamentals.market_cap, currency)),
-    fundamentalValue('P/E (TTM)', fundamentals.trailing_pe != null ? fundamentals.trailing_pe.toFixed(2) : '—'),
-    fundamentalValue('Forward P/E', fundamentals.forward_pe != null ? fundamentals.forward_pe.toFixed(2) : '—'),
-    fundamentalValue('Price / book', fundamentals.price_to_book != null ? fundamentals.price_to_book.toFixed(2) : '—'),
-    fundamentalValue('EPS (TTM)', formatMoney(fundamentals.eps_ttm, currency)),
+    fundamentalValue('Company size (market value)', formatMoney(fundamentals.market_cap, currency)),
+    fundamentalValue('Share price vs past earnings', fundamentals.trailing_pe != null ? fundamentals.trailing_pe.toFixed(2) : '—'),
+    fundamentalValue('Share price vs expected earnings', fundamentals.forward_pe != null ? fundamentals.forward_pe.toFixed(2) : '—'),
+    fundamentalValue('Share price vs company assets', fundamentals.price_to_book != null ? fundamentals.price_to_book.toFixed(2) : '—'),
+    fundamentalValue('Earnings for each share', formatMoney(fundamentals.eps_ttm, currency)),
     fundamentalValue('Dividend yield', formatDividendYield(fundamentals.dividend_yield)),
-    fundamentalValue('Return on equity', formatPercent(fundamentals.return_on_equity)),
+    fundamentalValue('Profit earned on shareholder money', formatPercent(fundamentals.return_on_equity)),
     fundamentalValue('Revenue growth', formatPercent(fundamentals.revenue_growth)),
     fundamentalValue('Earnings growth', formatPercent(fundamentals.earnings_growth)),
-    fundamentalValue('Profit margin', formatPercent(fundamentals.profit_margin)),
+    fundamentalValue('Profit left from sales', formatPercent(fundamentals.profit_margin)),
     fundamentalValue('Operating margin', formatPercent(fundamentals.operating_margin)),
-    fundamentalValue('Debt / equity (reported %)', formatPercent(fundamentals.debt_to_equity, true)),
-    fundamentalValue('Current ratio', fundamentals.current_ratio != null ? fundamentals.current_ratio.toFixed(2) : '—'),
-    fundamentalValue('Beta', fundamentals.beta != null ? fundamentals.beta.toFixed(2) : '—'),
+    fundamentalValue('Debt compared with shareholder money', formatPercent(fundamentals.debt_to_equity, true)),
+    fundamentalValue('Money available for near-term bills', fundamentals.current_ratio != null ? fundamentals.current_ratio.toFixed(2) : '—'),
+    fundamentalValue('Price movement compared with market', fundamentals.beta != null ? fundamentals.beta.toFixed(2) : '—'),
     fundamentalValue('Total revenue', formatMoney(fundamentals.total_revenue, currency)),
-    fundamentalValue('Free cash flow', formatMoney(fundamentals.free_cash_flow, currency)),
+    fundamentalValue('Cash left after spending', formatMoney(fundamentals.free_cash_flow, currency)),
   ];
 
   const fetchedAt = data.retrieved_at ? new Date(data.retrieved_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'now';
   return <div className="stock-research-details">
-    <p className="research-data-stamp">Research snapshot fetched {fetchedAt} IST. Fundamentals are provider-reported and may be delayed.</p>
+    <p className="research-data-stamp">Company and price information last checked {fetchedAt} IST. Some figures may be delayed.</p>
     <ResearchSection title="Recent company news" source={news.source || 'News provider'} status={news.status}>
-      <p className="research-note">Last {news.lookback_hours || 72} hours · headline screening only; open stories and filings to verify context.</p>
-      {news.event_risk && <div className="research-risk">Potential event-risk wording found. Review these stories before considering the setup.</div>}
+      <p className="research-note">News from the last {news.lookback_hours || 72} hours. Headlines are a quick check; open the full story and company updates for context.</p>
+      {news.event_risk && <div className="research-risk">A headline may describe an important event. Read the full story before deciding.</div>}
       {news.headlines?.length ? <ul className="research-news-list">{news.headlines.map((item, index) => <li key={`${item.title}-${index}`}><div>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}</div><small>{[item.source, item.published_at ? new Date(item.published_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : null].filter(Boolean).join(' · ')}</small></li>)}</ul> : <p className="research-empty">{news.status === 'unavailable' ? 'News could not be fetched. Check current company announcements manually.' : 'No recent headlines returned for this symbol.'}</p>}
     </ResearchSection>
 
-    <ResearchSection title="Technical details" source={technical.source || 'Daily market data'} status={technical.status}>
+    <ResearchSection title="Price and trend checks" source={technical.source || 'Daily market data'} status={technical.status}>
       {technical.error && <p className="research-empty">{technical.error}</p>}
+      <p className="research-note">These are clues from recent prices and trading activity, not predictions.</p>
       <ResearchGrid items={technicalItems} />
     </ResearchSection>
 
-    <ResearchSection title={fundamentals.company_name || 'Fundamentals'} source={fundamentals.source || 'Company data'} status={fundamentals.status}>
+    <ResearchSection title={fundamentals.company_name || 'Company details'} source={fundamentals.source || 'Company data'} status={fundamentals.status}>
       {(fundamentals.sector || fundamentals.industry) && <p className="research-note">{[fundamentals.sector, fundamentals.industry].filter(Boolean).join(' · ')}</p>}
       {fundamentals.error && <p className="research-empty">{fundamentals.error}</p>}
       <ResearchGrid items={fundamentalItems} />
@@ -220,49 +258,124 @@ function StockResearchDetails({ data, loading, error }) {
   </div>;
 }
 
-function PortfolioView({ data, loading, error, onRefresh, onSaveHolding, onDeleteHolding }) {
+function PortfolioView({ data, loading, saving, storageStatus, saveError, error, onRefresh, onSaveHolding, onDeleteHolding }) {
   const [entry, setEntry] = useState({ symbol: '', quantity: '', average_price: '' });
   const [editingSymbol, setEditingSymbol] = useState(null);
+  const [stocks, setStocks] = useState([]);
+  const [symbolListLoaded, setSymbolListLoaded] = useState(false);
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
+  const [symbolSearchError, setSymbolSearchError] = useState('');
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const holdings = data?.holdings || [];
   const totalValue = holdings.reduce((total, item) => total + (Number(item.current_value) || 0), 0);
   const totalInvestment = holdings.reduce((total, item) => total + (Number(item.invested_value) || 0), 0);
   const totalPnl = holdings.reduce((total, item) => total + (Number(item.unrealized_pnl) || 0), 0);
+  const symbolQuery = entry.symbol.trim().toUpperCase().replace(/\.NS$/, '');
+  const suggestions = useMemo(() => {
+    if (!symbolQuery) return [];
+    return stocks
+      .filter(stock => stock.symbol.includes(symbolQuery) || (stock.name || '').toUpperCase().includes(symbolQuery))
+      .sort((left, right) => {
+        const leftPrefix = left.symbol.startsWith(symbolQuery) ? 0 : 1;
+        const rightPrefix = right.symbol.startsWith(symbolQuery) ? 0 : 1;
+        return leftPrefix - rightPrefix || left.symbol.localeCompare(right.symbol);
+      })
+      .slice(0, 8);
+  }, [symbolQuery, stocks]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/symbols')
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Stock symbols could not be loaded.');
+        if (active) setStocks(result.stocks || (result.symbols || []).map(symbol => ({ symbol, name: symbol })));
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setSymbolListLoaded(true); });
+    return () => { active = false; };
+  }, []);
+
+  const selectStock = stock => {
+    setEntry(current => ({ ...current, symbol: stock.symbol }));
+    setSymbolSearchOpen(false);
+    setSymbolSearchError('');
+    setActiveSuggestion(-1);
+  };
+
   const submitHolding = event => {
     event.preventDefault();
-    const symbol = entry.symbol.trim().toUpperCase().replace(/\.NS$/, '');
+    const exactMatch = stocks.find(stock => stock.symbol === symbolQuery || (stock.name || '').trim().toUpperCase() === symbolQuery);
+    if (symbolListLoaded && stocks.length && !exactMatch) {
+      setSymbolSearchError('Type a ticker or company name, then choose a stock from the suggestions.');
+      setSymbolSearchOpen(true);
+      return;
+    }
+    const symbol = exactMatch?.symbol || symbolQuery;
+    if (!symbol) return;
     onSaveHolding({ symbol, quantity: Number(entry.quantity), average_price: Number(entry.average_price) }, editingSymbol);
     setEntry({ symbol: '', quantity: '', average_price: '' });
     setEditingSymbol(null);
+    setSymbolSearchError('');
   };
   const startEdit = item => {
     setEditingSymbol(item.symbol);
     setEntry({ symbol: item.symbol, quantity: String(item.quantity), average_price: String(item.average_price) });
+    setSymbolSearchError('');
   };
   return <section className="module-page portfolio-page">
-    <div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MANUAL PORTFOLIO · DAILY REVIEW</div><h1>Your portfolio</h1><p>Add your shares, quantity and average buy price for a daily technical review.</p></div>
-      <div className="portfolio-actions"><span className="portfolio-connection connected"><i />Saved in this browser</span><button className="secondary-button" onClick={onRefresh} disabled={loading}>{loading ? <RefreshCw size={14} className="spin" /> : <RefreshCw size={14} />}{loading ? 'Reviewing' : 'Refresh analysis'}</button></div>
+    <div className="module-heading"><div><div className="eyebrow subtle-eyebrow">YOUR SHARES · DAILY CHECK</div><h1>Your portfolio</h1><p>Add your shares, quantity and average buy price for a simple daily price and trend check.</p></div>
+      <div className="portfolio-actions"><span className={`portfolio-connection ${storageStatus === 'saved' ? 'connected' : ''}`}><i />{storageStatus === 'saving' ? 'Saving changes…' : storageStatus === 'saved' ? 'Saved on this app' : storageStatus === 'loading' ? 'Loading saved portfolio…' : 'Browser copy only'}</span><button className="secondary-button" onClick={onRefresh} disabled={loading || saving}>{loading ? <RefreshCw size={14} className="spin" /> : <RefreshCw size={14} />}{loading ? 'Reviewing' : 'Refresh analysis'}</button></div>
     </div>
     <form className="portfolio-entry" onSubmit={submitHolding}>
-      <label>Stock symbol<input value={entry.symbol} onChange={event => setEntry(current => ({ ...current, symbol: event.target.value }))} placeholder="e.g. RELIANCE or TCS" required pattern="[A-Za-z0-9&._-]+" maxLength={30} /></label>
+      <label className="portfolio-symbol-field">Stock symbol
+        <input
+          value={entry.symbol}
+          onChange={event => { setEntry(current => ({ ...current, symbol: event.target.value })); setSymbolSearchOpen(true); setSymbolSearchError(''); setActiveSuggestion(-1); }}
+          onFocus={() => setSymbolSearchOpen(true)}
+          onBlur={() => setSymbolSearchOpen(false)}
+          onKeyDown={event => {
+            if (event.key === 'ArrowDown' && suggestions.length) { event.preventDefault(); setSymbolSearchOpen(true); setActiveSuggestion(index => index < 0 ? 0 : (index + 1) % suggestions.length); }
+            else if (event.key === 'ArrowUp' && suggestions.length) { event.preventDefault(); setSymbolSearchOpen(true); setActiveSuggestion(index => index < 0 ? suggestions.length - 1 : (index - 1 + suggestions.length) % suggestions.length); }
+            else if (event.key === 'Enter' && symbolSearchOpen && suggestions.length && !stocks.some(stock => stock.symbol === symbolQuery)) { event.preventDefault(); selectStock(stocks.find(stock => stock.symbol === symbolQuery || (stock.name || '').trim().toUpperCase() === symbolQuery) || suggestions[activeSuggestion] || suggestions[0]); }
+            else if (event.key === 'Escape') setSymbolSearchOpen(false);
+          }}
+          placeholder="Search ticker or company, e.g. IRCTC"
+          autoComplete="off"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={symbolSearchOpen && suggestions.length > 0}
+          aria-controls="portfolio-symbol-suggestions"
+          required
+          maxLength={30}
+        />
+        {symbolSearchOpen && symbolQuery && <div className="portfolio-symbol-suggestions" id="portfolio-symbol-suggestions" role="listbox">
+          {suggestions.length ? suggestions.map((stock, index) => <button key={stock.symbol} type="button" role="option" aria-selected={index === activeSuggestion} className={index === activeSuggestion ? 'active' : ''} onMouseDown={event => event.preventDefault()} onClick={() => selectStock(stock)}>
+            <strong>{stock.symbol}</strong><span>{stock.name || stock.symbol}</span>
+          </button>) : <span className="portfolio-symbol-empty">{symbolListLoaded ? 'No NSE stock matches that search.' : 'Loading NSE stock list…'}</span>}
+        </div>}
+        {symbolSearchError && <small className="portfolio-symbol-error">{symbolSearchError}</small>}
+      </label>
       <label>Quantity<input type="number" value={entry.quantity} onChange={event => setEntry(current => ({ ...current, quantity: event.target.value }))} min="0.000001" step="any" placeholder="Shares" required /></label>
       <label>Average buy price<input type="number" value={entry.average_price} onChange={event => setEntry(current => ({ ...current, average_price: event.target.value }))} min="0.01" step="any" placeholder="₹ per share" required /></label>
-      <div className="portfolio-entry-actions"><button className="primary-button" type="submit" disabled={loading}>{editingSymbol ? 'Save changes' : 'Add stock'}</button>{editingSymbol && <button className="secondary-button" type="button" onClick={() => { setEditingSymbol(null); setEntry({ symbol: '', quantity: '', average_price: '' }); }}>Cancel</button>}</div>
+      <div className="portfolio-entry-actions"><button className="primary-button" type="submit" disabled={loading || saving}>{saving ? 'Saving…' : editingSymbol ? 'Save changes' : 'Add stock'}</button>{editingSymbol && <button className="secondary-button" type="button" disabled={saving} onClick={() => { setEditingSymbol(null); setEntry({ symbol: '', quantity: '', average_price: '' }); setSymbolSearchError(''); setSymbolSearchOpen(false); }}>Cancel</button>}</div>
     </form>
     {error && <div className="portfolio-notice"><strong>{error}</strong></div>}
+    {saveError && <div className="portfolio-notice"><strong>{saveError}</strong></div>}
     {loading && !data ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Reviewing your shares</strong><span>Calculating daily trend checks…</span></div>
-      : holdings.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Wallet size={19} /></div><strong>Add your first stock</strong><span>Enter its NSE symbol, quantity and average buy price above. Your list is saved in this browser.</span></div>
+      : holdings.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Wallet size={19} /></div><strong>Add your first stock</strong><span>Enter its NSE symbol, quantity and average buy price above. Your list is saved with this app.</span></div>
         : <>
-          <div className="portfolio-summary"><article><span>SHARES HELD</span><strong>{holdings.length}</strong></article><article><span>INVESTED · EST.</span><strong>{formatPrice(totalInvestment)}</strong></article><article><span>MARKET VALUE · EST.</span><strong>{formatPrice(totalValue)}</strong></article><article><span>UNREALIZED P&amp;L · EST.</span><strong className={totalPnl >= 0 ? 'positive' : 'negative'}>{formatPrice(totalPnl)}</strong></article></div>
+          <div className="portfolio-summary"><article><span>SHARES HELD</span><strong>{holdings.length}</strong></article><article><span>MONEY INVESTED · EST.</span><strong>{formatPrice(totalInvestment)}</strong></article><article><span>VALUE TODAY · EST.</span><strong>{formatPrice(totalValue)}</strong></article><article><span>GAIN OR LOSS · EST.</span><strong className={totalPnl >= 0 ? 'positive' : 'negative'}>{formatPrice(totalPnl)}</strong></article></div>
           <div className="portfolio-list">{holdings.map((item, index) => {
             const analysis = item.analysis || {};
-            const actionLabel = analysis.action === 'REVIEW_SELL' ? 'Review position' : analysis.action === 'HOLD' ? 'Hold' : 'Insufficient data';
+            const actionLabel = analysis.action === 'REVIEW_SELL' ? 'Review this share' : analysis.action === 'HOLD' ? 'No exit warning' : 'Not enough information';
             const actionClass = analysis.action === 'REVIEW_SELL' ? 'review-sell' : analysis.action === 'HOLD' ? 'hold' : 'unknown';
             return <article className="portfolio-card" key={`${item.display_symbol || item.symbol}-${index}`}>
-              <div className="portfolio-card-heading"><div><span className="instrument-token">{(item.display_symbol || item.symbol || '?').slice(0, 1)}</span><div><strong>{item.display_symbol || item.symbol}</strong><small>Manual entry · Qty {item.quantity ?? '—'}</small></div></div><div className="portfolio-card-controls"><span className={`portfolio-action ${actionClass}`}>{actionLabel}</span><button type="button" onClick={() => startEdit(item)}>Edit</button><button type="button" onClick={() => onDeleteHolding(item.symbol)}>Remove</button></div></div>
-              <div className="portfolio-values"><div><span>LAST PRICE</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVG. BUY</span><b>{formatPrice(item.average_price)}</b></div><div><span>QUANTITY</span><b>{item.quantity}</b></div><div><span>INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>MARKET VALUE · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>UNREALIZED P&amp;L · EST.</span><b className={Number(item.unrealized_pnl) >= 0 ? 'positive' : 'negative'}>{formatPrice(item.unrealized_pnl)}</b></div></div>
-              {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>EMA 20 <b>{formatPrice(analysis.ema20)}</b></span><span>EMA 50 <b>{formatPrice(analysis.ema50)}</b></span><span>RSI 14 <b>{analysis.rsi14 ?? '—'}</b></span><span>20-session return <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{analysis.return20_pct == null ? '—' : `${analysis.return20_pct}%`}</b></span><small>Daily data: {analysis.as_of || '—'}</small></div>}
+              <div className="portfolio-card-heading"><div><span className="instrument-token">{(item.display_symbol || item.symbol || '?').slice(0, 1)}</span><div><strong>{item.display_symbol || item.symbol}</strong><small>Manual entry · Qty {item.quantity ?? '—'}</small></div></div><div className="portfolio-card-controls"><span className={`portfolio-action ${actionClass}`}>{actionLabel}</span><button type="button" disabled={saving} onClick={() => startEdit(item)}>Edit</button><button type="button" disabled={saving} onClick={() => onDeleteHolding(item.symbol)}>Remove</button></div></div>
+              <div className="portfolio-values"><div><span>PRICE TODAY</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVERAGE BUY PRICE</span><b>{formatPrice(item.average_price)}</b></div><div><span>SHARES</span><b>{item.quantity}</b></div><div><span>MONEY INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>VALUE TODAY · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>GAIN OR LOSS · EST.</span><b className={Number(item.unrealized_pnl) >= 0 ? 'positive' : 'negative'}>{formatPrice(item.unrealized_pnl)}</b></div></div>
+              {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>20-day average price <b>{formatPrice(analysis.ema20)}</b></span><span>50-day average price <b>{formatPrice(analysis.ema50)}</b></span><span>Recent price strength <b>{analysis.rsi14 ?? '—'}</b></span><span>Price change in 20 days <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{analysis.return20_pct == null ? '—' : `${analysis.return20_pct}%`}</b></span><small>Price date: {analysis.as_of || '—'}</small></div>}
               <ul className="portfolio-reasons">{(analysis.reasons || []).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul>
-              <div className={`portfolio-verdict ${actionClass}`}><div><span>AASAAN VERDICT · BEGINNER VIEW</span><strong>{actionLabel}</strong></div><p>{analysis.beginner_verdict || 'Is review me abhi agla step tay karne ke liye kaafi data nahi hai.'}</p></div>
+              <div className={`portfolio-verdict ${actionClass}`}><div><span>SIMPLE TAKEAWAY</span><strong>{actionLabel}</strong></div><p>{analysis.beginner_verdict || 'Is review me agla kadam samajhne ke liye abhi kaafi jaankari nahi hai.'}</p></div>
             </article>;
           })}</div>
           <p className="portfolio-disclaimer">{data?.disclaimer || 'Technical research screen only, not personalized financial advice.'} Price history comes from Yahoo Finance; signals may not account for your investment horizon, taxes, corporate actions, or personal risk limits.</p>
@@ -279,6 +392,7 @@ export default function App() {
   const [screenerData, setScreenerData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [historyHoldingDays, setHistoryHoldingDays] = useState(readHistoryHoldingDays);
   const [strategyFilter, setStrategyFilter] = useState('ALL');
   const [quickFilter, setQuickFilter] = useState('ALL');
   const [viewMode, setViewMode] = useState('table');
@@ -293,8 +407,48 @@ export default function App() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [portfolioError, setPortfolioError] = useState(null);
   const [manualHoldings, setManualHoldings] = useState(readManualPortfolio);
+  const [portfolioInitialized, setPortfolioInitialized] = useState(false);
+  const [portfolioSaving, setPortfolioSaving] = useState(false);
+  const [portfolioStorageStatus, setPortfolioStorageStatus] = useState('loading');
+  const [portfolioSaveError, setPortfolioSaveError] = useState(null);
   const [currentTime, setCurrentTime] = useState('');
   const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadSavedPortfolio = async () => {
+      try {
+        const response = await fetch('/api/portfolio/manual', { cache: 'no-store' });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'Saved portfolio could not be loaded.');
+        let holdings = result.holdings || [];
+        if (!holdings.length && manualHoldings.length) {
+          const migration = await fetch('/api/portfolio/manual', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ holdings: manualHoldings }),
+          });
+          const migrated = await migration.json();
+          if (!migration.ok) throw new Error(migrated.detail || 'Existing browser portfolio could not be migrated.');
+          holdings = migrated.holdings || manualHoldings;
+        }
+        if (active) {
+          setManualHoldings(holdings);
+          setPortfolioStorageStatus('saved');
+          setPortfolioSaveError(null);
+        }
+      } catch (loadError) {
+        if (active) {
+          setPortfolioStorageStatus('local');
+          setPortfolioSaveError(`Server storage is unavailable; using this browser's saved copy. ${loadError.message || ''}`);
+        }
+      } finally {
+        if (active) setPortfolioInitialized(true);
+      }
+    };
+    loadSavedPortfolio();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
@@ -339,7 +493,19 @@ export default function App() {
       setScreenerData(data);
       if (data.regime) setRegimeData(data.regime);
       playTone('success');
-      showToast(`Scan complete · ${data.signals?.length || 0} setups found`, 'success');
+      try {
+        const historyResponse = await fetch('/api/history/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signals: data.signals || [], max_holding_days: historyHoldingDays }),
+        });
+        const historyResult = await historyResponse.json();
+        if (!historyResponse.ok) throw new Error(historyResult.detail || 'History save failed.');
+        showToast(`Scan complete · ${data.signals?.length || 0} setups · ${historyResult.inserted} new saved to History`, 'success');
+      } catch (historyError) {
+        console.error('Unable to save scan results to history', historyError);
+        showToast(`Scan complete · ${data.signals?.length || 0} setups · History save failed`, 'warning');
+      }
     } catch (error) {
       console.error('Failed to run screener', error);
       playTone('alert');
@@ -347,9 +513,14 @@ export default function App() {
     } finally { setLoading(false); }
   };
   useEffect(() => {
+    if (!portfolioInitialized) return;
     try { window.localStorage.setItem(MANUAL_PORTFOLIO_KEY, JSON.stringify(manualHoldings)); }
     catch (error) { console.warn('Could not save manual portfolio in this browser', error); }
-  }, [manualHoldings]);
+  }, [manualHoldings, portfolioInitialized]);
+  useEffect(() => {
+    try { window.localStorage.setItem(HISTORY_HOLDING_DAYS_KEY, String(historyHoldingDays)); }
+    catch (error) { console.warn('Could not save the history exit period in this browser', error); }
+  }, [historyHoldingDays]);
   const loadPortfolio = async (_forceRefresh = false, rows = manualHoldings) => {
     setPortfolioLoading(true);
     setPortfolioError(null);
@@ -374,24 +545,43 @@ export default function App() {
     } finally { setPortfolioLoading(false); }
   };
   const saveManualHolding = (holding, oldSymbol = null) => {
-    const next = [...manualHoldings];
-    const existingIndex = next.findIndex(item => item.symbol === (oldSymbol || holding.symbol));
-    if (existingIndex >= 0) next[existingIndex] = holding;
-    else next.push(holding);
-    setManualHoldings(next);
-    loadPortfolio(false, next);
+    const next = manualHoldings.filter(item => item.symbol !== oldSymbol && item.symbol !== holding.symbol);
+    next.push(holding);
+    persistManualHoldings(next);
+  };
+  const persistManualHoldings = async rows => {
+    setPortfolioSaving(true);
+    setPortfolioStorageStatus('saving');
+    setPortfolioSaveError(null);
+    try {
+      const response = await fetch('/api/portfolio/manual', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ holdings: rows }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Portfolio changes could not be saved.');
+      const saved = result.holdings || rows;
+      setManualHoldings(saved);
+      setPortfolioStorageStatus('saved');
+      loadPortfolio(false, saved);
+    } catch (saveError) {
+      setManualHoldings(rows);
+      setPortfolioStorageStatus('local');
+      setPortfolioSaveError(`Changes remain saved in this browser, but server storage failed: ${saveError.message || 'unknown error'}`);
+      loadPortfolio(false, rows);
+    } finally { setPortfolioSaving(false); }
   };
   const deleteManualHolding = symbol => {
     const next = manualHoldings.filter(item => item.symbol !== symbol);
-    setManualHoldings(next);
-    loadPortfolio(false, next);
+    persistManualHoldings(next);
   };
   useEffect(() => { loadRegime(); runScreener(false); }, []);
   useEffect(() => {
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const reviewedDate = portfolioData?.analysis_as_of?.slice(0, 10);
-    if (activeTab === 'portfolio' && !portfolioLoading && !portfolioError && (!portfolioData || reviewedDate !== today)) loadPortfolio(false);
-  }, [activeTab, portfolioData, portfolioLoading, portfolioError, currentTime]);
+    if (activeTab === 'portfolio' && portfolioInitialized && !portfolioLoading && !portfolioError && (!portfolioData || reviewedDate !== today)) loadPortfolio(false);
+  }, [activeTab, portfolioInitialized, portfolioData, portfolioLoading, portfolioError, currentTime]);
   useEffect(() => {
     let active = true;
     let timer;
@@ -496,7 +686,7 @@ export default function App() {
   const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   const iiflQuoteIsToday = Boolean(liveQuote?.tick_at && liveQuote.tick_at.slice(0, 10) === istToday);
   const displayedNiftyPrice = isMarketOpen && hasLiveQuote ? liveQuote.price : iiflQuoteIsToday ? liveQuote.price : metrics.nifty_close ?? liveQuote?.price;
-  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'regime' ? 'Market regime' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : 'Strategy lab';
+  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : 'Test a strategy';
 
   const selectTab = id => { setActiveTab(id); playTone('click'); };
   const handleCopySetup = signal => {
@@ -511,7 +701,7 @@ export default function App() {
   return <div className="spatial-app">
     {toast && <CyberToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     <aside className="side-rail">
-      <button className="brand-mark" aria-label="Aether home" onClick={() => selectTab('screener')}><span className="brand-orb"><img className="brand-logo" src={appLogo} alt="" /></span></button>
+      <button className="brand-mark" aria-label="MarketVoice home" onClick={() => selectTab('screener')}><span className="brand-orb"><img className="brand-logo" src={appLogo} alt="" /></span></button>
       <div className="rail-divider" />
       <div className="nav-group-label">WORKSPACE</div>
       <nav className="side-nav" aria-label="Primary navigation">
@@ -566,40 +756,44 @@ export default function App() {
                   <div className="hero-range-values"><span>LOW {formatPrice(rangeLow)}</span><span>HIGH {formatPrice(rangeHigh)}</span></div>
                 </div> : <div className="hero-range-placeholder">{!isMarketOpen ? 'Intraday range hidden while market is closed' : hasLiveQuote ? 'Session high/low not supplied by the feed' : 'Live price range appears after IIFL quote connects'}</div>}
               </div>
-              <div className="hero-regime-summary">
-                <div><small><i style={{ background: regimeData?.color || '#d9f2a2' }} />MARKET REGIME</small><strong>{regimeData?.title || 'Waiting for market analysis'}</strong></div>
-                <span title="Breadth and RSI use Yahoo Finance daily OHLCV data for the selected stock sample">{metrics.breadth_above_50ema_pct != null ? `YF breadth ${metrics.breadth_above_50ema_pct}% · ${metrics.breadth_valid_symbols ?? '—'} stocks > 50 EMA` : 'YF breadth unavailable'}<br />{metrics.rsi_14 != null ? `Nifty RSI ${metrics.rsi_14} · daily` : 'Nifty RSI —'}</span>
+            <div className="hero-regime-summary">
+                <div><small><i style={{ background: regimeData?.color || '#d9f2a2' }} />MARKET MOOD</small><strong>{regimeData?.title || 'Checking the market'}</strong></div>
+                <span title="Based on recent daily prices for a sample of shares">{metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}% of tracked shares are above their 50-day average` : 'Share trend data unavailable'}<br />{metrics.rsi_14 != null ? `Nifty price strength ${metrics.rsi_14}/100` : 'Nifty price strength —'}</span>
               </div>
             </button>
           </section>
 
           <section className="market-strip" aria-label="Market snapshot">
             <MetricCard label="NIFTY 50" value={displayedNiftyPrice != null ? Number(displayedNiftyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'} change={isMarketOpen && liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : 'Day-end close'} positive={isMarketOpen && liveQuote ? liveChange >= 0 : null} icon={LineChart} note={isMarketOpen ? liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : 'Waiting for IIFL live quote' : iiflQuoteIsToday ? `IIFL last quote · ${liveQuoteTime || ''} IST` : 'Latest daily close · Yahoo Finance'} tone="lilac" />
-            <MetricCard label="Market breadth" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'Broadening' : 'Narrow'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="above 50 day average" tone="mint" />
-            <MetricCard label="Active setups" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} high alignment`} positive={optimalCount > 0} icon={Target} note={`Average 1:${avgRR} risk / reward`} tone="peach" />
+            <MetricCard label="Tracked shares above average" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'More than half' : 'Fewer than half'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="Compared with their 50-day average" tone="mint" />
+            <MetricCard label="Shares to review" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} fit the market mood`} positive={optimalCount > 0} icon={Target} note={`Typical possible gain vs loss: 1:${avgRR}`} tone="peach" />
             <article className="regime-card" onClick={() => selectTab('regime')} role="button" tabIndex="0" onKeyDown={event => event.key === 'Enter' && selectTab('regime')}>
-              <div className="regime-orbit"><span /><i /><b /></div><div className="regime-copy"><span className="regime-label">CURRENT REGIME</span><strong>{regimeData?.title || 'Reading the market'}</strong><small><span className="regime-dot" style={{ backgroundColor: regimeData?.color || '#aaa' }} />{regimeData?.recommended_action || 'Market conditions update with each scan'}</small></div><ArrowUpRight size={16} className="regime-link" />
+              <div className="regime-orbit"><span /><i /><b /></div><div className="regime-copy"><span className="regime-label">MARKET MOOD</span><strong>{regimeData?.title || 'Checking the market'}</strong><small><span className="regime-dot" style={{ backgroundColor: regimeData?.color || '#aaa' }} />{regimeData?.recommended_action || 'Market summary updates with each scan'}</small></div><ArrowUpRight size={16} className="regime-link" />
             </article>
           </section>
 
           <section className="insight-banner">
-            <div className="banner-glow" /><div className="banner-icon"><Sparkles size={18} /></div><div className="banner-copy"><span>MARKET PULSE <i /> {isMarketOpen ? 'LIVE SESSION' : 'LATEST SESSION'}</span><strong>{regimeData?.description || 'Your swing trading workspace is ready.'}</strong><small>Capital exposure guide <b>{regimeData?.max_capital_exposure_pct ?? '—'}%</b><span className="banner-separator">·</span>Nifty RSI <b>{metrics.rsi_14 ?? '—'}</b><span className="banner-separator">·</span>Daily ATR <b>{metrics.atr_pct != null ? `${metrics.atr_pct}%` : '—'}</b></small></div><button className="banner-action" onClick={() => selectTab('regime')}>Explore regime <ArrowUpRight size={15} /></button>
+            <div className="banner-glow" /><div className="banner-icon"><Sparkles size={18} /></div><div className="banner-copy"><span>MARKET SUMMARY <i /> {isMarketOpen ? 'LIVE SESSION' : 'LATEST SESSION'}</span><strong>{regimeData?.description || 'Your share market workspace is ready.'}</strong><small>Suggested money in shares <b>{regimeData?.max_capital_exposure_pct ?? '—'}%</b><span className="banner-separator">·</span>Nifty price strength <b>{metrics.rsi_14 ?? '—'}/100</b><span className="banner-separator">·</span>Usual daily Nifty move <b>{metrics.atr_pct != null ? `${metrics.atr_pct}%` : '—'}</b></small></div><button className="banner-action" onClick={() => selectTab('regime')}>See market mood <ArrowUpRight size={15} /></button>
           </section>
 
             <section className="setups-section">
-            <div className="section-heading"><div><div className="eyebrow subtle-eyebrow">SWING STRATEGIES <span className="heading-line" /></div><h2>Setups in focus <span>{filteredSignals.length}</span></h2><p>Click any stock for its news, technicals and available fundamentals.</p></div><div className="setup-actions"><label className="search-box"><Search size={16} /><input ref={searchInputRef} value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search symbols" /><kbd>/</kbd>{searchQuery && <button onClick={() => setSearchQuery('')} aria-label="Clear search"><X size={14} /></button>}</label><select className="strategy-select" value={strategyFilter} onChange={event => setStrategyFilter(event.target.value)} aria-label="Filter by strategy"><option value="ALL">All strategies</option><option value="trend_pullback">Trend EMA Pullback</option><option value="relative_strength">Relative Strength Leader</option><option value="capitulation_reversal">Capitulation Oversold Bounce</option><option value="volatility_squeeze">Volatility Squeeze Expansion</option><option value="multi_factor">Multi-Factor Confluence</option></select><div className="view-toggle"><button onClick={() => setViewMode('table')} className={viewMode === 'table' ? 'active' : ''} aria-label="Table view"><Table2 size={16} /></button><button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-label="Card view"><LayoutDashboard size={16} /></button></div></div></div>
-            <div className="filter-row"><span>QUICK FILTER</span>{[['ALL', `All ${allSignals.length}`], ['OPTIMAL', `In regime ${optimalCount}`], ['HIGH_RR', 'R:R above 2'], ['HIGH_CONVICTION', 'Setup score 80+']].map(([id, label]) => <button key={id} className={`filter-pill ${quickFilter === id ? 'active' : ''}`} onClick={() => setQuickFilter(id)}>{quickFilter === id && <Check size={13} />}{label}</button>)}<span className="scan-time"><span className="scan-time-dot" />Updated {screenerData?.timestamp || 'just now'}</span></div>
+            <div className="section-heading"><div><div className="eyebrow subtle-eyebrow">STOCKS TO REVIEW <span className="heading-line" /></div><h2>Possible swing trades <span>{filteredSignals.length}</span></h2><p>Choose a stock for its price summary, company details and recent news.</p></div><div className="setup-actions"><label className="search-box"><Search size={16} /><input ref={searchInputRef} value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Find a stock" /><kbd>/</kbd>{searchQuery && <button onClick={() => setSearchQuery('')} aria-label="Clear search"><X size={14} /></button>}</label><select className="strategy-select" value={strategyFilter} onChange={event => setStrategyFilter(event.target.value)} aria-label="Filter stock ideas"><option value="ALL">All stock ideas</option><option value="trend_pullback">Buy a dip in a rising share</option><option value="relative_strength">Shares doing better than Nifty</option><option value="capitulation_reversal">Possible bounce after a sharp fall</option><option value="volatility_squeeze">Breakout after a quiet period</option><option value="multi_factor">Several positive checks agree</option></select><div className="view-toggle"><button onClick={() => setViewMode('table')} className={viewMode === 'table' ? 'active' : ''} aria-label="Table view"><Table2 size={16} /></button><button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-label="Card view"><LayoutDashboard size={16} /></button></div></div></div>
+            <div className="history-horizon-bar"><span>Stop tracking a share after</span><select value={historyHoldingDays} onChange={event => setHistoryHoldingDays(Number(event.target.value))} aria-label="Stop tracking after this many market days"><option value={15}>15 market days</option><option value={30}>30 market days</option></select><small>This applies to shares added by future scans.</small></div>
+            <div className="filter-row"><span>SHOW</span>{[['ALL', `All ${allSignals.length}`], ['OPTIMAL', `Fits market mood ${optimalCount}`], ['HIGH_RR', 'Possible gain is at least 2× the loss'], ['HIGH_CONVICTION', 'Many checks agree']].map(([id, label]) => <button key={id} className={`filter-pill ${quickFilter === id ? 'active' : ''}`} onClick={() => setQuickFilter(id)}>{quickFilter === id && <Check size={13} />}{label}</button>)}<span className="scan-time"><span className="scan-time-dot" />Updated {screenerData?.timestamp || 'just now'}</span></div>
 
-            {loading ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Reading the market</strong><span>Scanning for setups across your universe…</span></div> : filteredSignals.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Search size={19} /></div><strong>{allSignals.length ? 'No setups match these filters' : 'No setups to show yet'}</strong><span>{allSignals.length ? 'Try a different symbol or filter.' : 'Run a fresh market scan to look for opportunities.'}</span>{!allSignals.length && <button className="text-action" onClick={() => runScreener(true)}>Scan market <ArrowUpRight size={14} /></button>}</div> : viewMode === 'table' ? <div className="table-shell"><div className="table-scroll"><table className="setups-table"><thead><tr><th>INSTRUMENT</th><th>STRATEGY</th><th>LAST MOVE</th><th>ENTRY</th><th>STOP</th><th>TARGET</th><th>RISK / REWARD</th><th>SETUP SCORE</th><th aria-label="Actions" /></tr></thead><tbody>{filteredSignals.map((signal, index) => { const positive = signal.change_pct >= 0; const isCopied = copiedSymbol === signal.symbol; return <tr key={`${signal.symbol}-${index}`} onClick={() => setSelectedChartTrade(signal)} className="setup-row"><td><div className="instrument"><span className="instrument-token">{signal.symbol.slice(0, 1)}</span><span><b>{signal.symbol}</b><small>{signal.trade_status || (signal.regime_status === 'OPTIMAL' ? 'Aligned with regime' : signal.strategy_title || 'Swing setup')}</small></span></div></td><td><span className="strategy-tag">{signal.strategy_title || signal.strategy}</span></td><td><span className={`move-value ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{positive ? '+' : ''}{signal.change_pct}%</span></td><td className="numeric-cell">{formatPrice(signal.entry_price)}</td><td className="numeric-cell stop-value">{formatPrice(signal.stop_loss)}</td><td className="numeric-cell target-value">{formatPrice(signal.target_1)}</td><td><span className="rr-badge">1:{signal.risk_reward}</span></td><td><div className="confidence"><span className="confidence-track"><i style={{ width: `${Math.min(100, signal.confidence_score || 0)}%` }} /></span><b>{signal.confidence_score ?? '—'}%</b></div></td><td><button className="row-action" title="Copy setup" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}>{isCopied ? <Check size={15} /> : <Copy size={15} />}</button></td></tr>; })}</tbody></table></div><div className="table-footer"><span><b>{filteredSignals.length}</b> setups shown</span><span>Prices and signals reflect the latest available market data</span></div></div> : <div className="setup-grid">{filteredSignals.map((signal, index) => <article className="setup-card" key={`${signal.symbol}-${index}`} onClick={() => setSelectedChartTrade(signal)}><div className="setup-card-top"><span className="instrument-token large-token">{signal.symbol.slice(0, 1)}</span><span className={`move-value ${signal.change_pct >= 0 ? 'positive' : 'negative'}`}>{signal.change_pct >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{signal.change_pct >= 0 ? '+' : ''}{signal.change_pct}%</span></div><h3>{signal.symbol}</h3><p className="setup-strategy">{signal.strategy_title}</p><div className="card-prices"><div><span>ENTRY</span><b>{formatPrice(signal.entry_price)}</b></div><div><span>STOP</span><b className="stop-value">{formatPrice(signal.stop_loss)}</b></div><div><span>TARGET</span><b className="target-value">{formatPrice(signal.target_1)}</b></div></div><div className="card-end"><span className="rr-badge">1:{signal.risk_reward} R/R</span><button className="text-action" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}><Copy size={14} /> Copy plan</button></div></article>)}</div>}
+            {loading ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Checking shares</strong><span>Looking for shares that match your choices…</span></div> : filteredSignals.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Search size={19} /></div><strong>{allSignals.length ? 'No shares match these choices' : 'No shares to show yet'}</strong><span>{allSignals.length ? 'Try a different name or choice.' : 'Check the market again to find shares.'}</span>{!allSignals.length && <button className="text-action" onClick={() => runScreener(true)}>Check market <ArrowUpRight size={14} /></button>}</div> : viewMode === 'table' ? <div className="table-shell"><div className="table-scroll"><table className="setups-table"><thead><tr><th>SHARE</th><th>WHY IT APPEARED</th><th>PRICE CHANGE</th><th>PRICE TO REVIEW</th><th>EXIT IF IT FALLS TO</th><th>POSSIBLE GAIN PRICE</th><th>POSSIBLE GAIN VS LOSS</th><th>CHECK SCORE</th><th aria-label="Actions" /></tr></thead><tbody>{filteredSignals.map((signal, index) => { const positive = signal.change_pct >= 0; const isCopied = copiedSymbol === signal.symbol; return <tr key={`${signal.symbol}-${index}`} onClick={() => setSelectedChartTrade(signal)} className="setup-row"><td><div className="instrument"><span className="instrument-token">{signal.symbol.slice(0, 1)}</span><span><b>{signal.symbol}</b><small>{simpleSignalStatus(signal.trade_status) || (signal.regime_status === 'OPTIMAL' ? 'Fits the current market mood' : simpleStrategyName(signal.strategy, signal.strategy_title))}</small></span></div></td><td><span className="strategy-tag">{simpleStrategyName(signal.strategy, signal.strategy_title)}</span></td><td><span className={`move-value ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{positive ? '+' : ''}{signal.change_pct}%</span></td><td className="numeric-cell">{formatPrice(signal.entry_price)}</td><td className="numeric-cell stop-value">{formatPrice(signal.stop_loss)}</td><td className="numeric-cell target-value">{formatPrice(signal.target_1)}</td><td><span className="rr-badge">{signal.risk_reward} to 1</span></td><td><div className="confidence"><span className="confidence-track"><i style={{ width: `${Math.min(100, signal.confidence_score || 0)}%` }} /></span><b>{signal.confidence_score ?? '—'}%</b></div></td><td><button className="row-action" title="Copy setup" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}>{isCopied ? <Check size={15} /> : <Copy size={15} />}</button></td></tr>; })}</tbody></table></div><div className="table-footer"><span><b>{filteredSignals.length}</b> shares shown</span><span>Prices use the latest available market information</span></div></div> : <div className="setup-grid">{filteredSignals.map((signal, index) => <article className="setup-card" key={`${signal.symbol}-${index}`} onClick={() => setSelectedChartTrade(signal)}><div className="setup-card-top"><span className="instrument-token large-token">{signal.symbol.slice(0, 1)}</span><span className={`move-value ${signal.change_pct >= 0 ? 'positive' : 'negative'}`}>{signal.change_pct >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{signal.change_pct >= 0 ? '+' : ''}{signal.change_pct}%</span></div><h3>{signal.symbol}</h3><p className="setup-strategy">{simpleStrategyName(signal.strategy, signal.strategy_title)}</p><div className="card-prices"><div><span>PRICE TO REVIEW</span><b>{formatPrice(signal.entry_price)}</b></div><div><span>EXIT IF IT FALLS TO</span><b className="stop-value">{formatPrice(signal.stop_loss)}</b></div><div><span>POSSIBLE GAIN PRICE</span><b className="target-value">{formatPrice(signal.target_1)}</b></div></div><div className="card-end"><span className="rr-badge">{signal.risk_reward} to 1 possible gain vs loss</span><button className="text-action" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}><Copy size={14} /> Copy plan</button></div></article>)}</div>}
           </section>
           <footer className="page-footer"><span><ShieldCheck size={14} /> Research tools for informed decisions</span><span>Data may be delayed. Verify before trading.</span></footer>
         </>}
 
-        {activeTab === 'portfolio' && <PortfolioView data={portfolioData} loading={portfolioLoading} error={portfolioError} onSaveHolding={saveManualHolding} onDeleteHolding={deleteManualHolding} onRefresh={() => loadPortfolio(true)} />}
+        {activeTab === 'portfolio' && <PortfolioView data={portfolioData} loading={portfolioLoading} saving={portfolioSaving} storageStatus={portfolioStorageStatus} saveError={portfolioSaveError} error={portfolioError} onSaveHolding={saveManualHolding} onDeleteHolding={deleteManualHolding} onRefresh={() => loadPortfolio(true)} />}
+        {activeTab === 'history' && <SignalHistoryView />}
+        {activeTab === 'flow-watch' && <InstitutionalFlowView />}
+        {activeTab === 'stock-analysis' && <StockAnalysisView />}
         {activeTab === 'intraday' && <TradingStrategiesView mode="intraday" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
         {activeTab === 'options' && <TradingStrategiesView mode="options" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
-        {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market regime</h1><p>Understand the conditions shaping today’s opportunities.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
-        {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">RESEARCH WORKSPACE</div><h1>Strategy lab</h1><p>Explore how your swing strategies have behaved across historical data.</p></div><span className="research-badge"><BookOpen size={14} /> Research mode</span></div><BacktestLab /></section>}
+        {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market mood</h1><p>See whether the overall market looks strong, weak or mixed.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
+        {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">LEARN FROM PAST PRICES</div><h1>Test a strategy</h1><p>See how a share-picking idea would have worked on older prices.</p></div><span className="research-badge"><BookOpen size={14} /> Learning tool</span></div><BacktestLab /></section>}
       </main>
     </div>
 

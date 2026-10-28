@@ -23,6 +23,49 @@ def _number(value: Any) -> Optional[float]:
         return None
 
 
+def _historical_scenarios(close: Any, last_price: float) -> Dict[str, Any]:
+    """Build illustrative price ranges from recent log-return drift and volatility."""
+    prices = [_number(value) for value in close.tail(253).tolist()]
+    prices = [value for value in prices if value is not None and value > 0]
+    log_returns = [math.log(current / previous) for previous, current in zip(prices, prices[1:]) if previous > 0]
+    if len(log_returns) < 40:
+        return {
+            "status": "unavailable",
+            "method": "Historical daily log-return drift and volatility; at least 40 observations are required.",
+            "observations": len(log_returns),
+            "scenarios": [],
+        }
+
+    daily_drift = sum(log_returns) / len(log_returns)
+    daily_variance = sum((value - daily_drift) ** 2 for value in log_returns) / (len(log_returns) - 1)
+    daily_volatility = math.sqrt(daily_variance)
+    z80 = 1.281551565545
+    scenarios = []
+    for sessions, label in ((20, "About 1 month"), (60, "About 3 months")):
+        expected_log_return = daily_drift * sessions
+        range_width = z80 * daily_volatility * math.sqrt(sessions)
+        base_price = last_price * math.exp(expected_log_return)
+        low_price = last_price * math.exp(expected_log_return - range_width)
+        high_price = last_price * math.exp(expected_log_return + range_width)
+        scenarios.append({
+            "sessions": sessions,
+            "label": label,
+            "base_price": round(base_price, 2),
+            "low_price": round(low_price, 2),
+            "high_price": round(high_price, 2),
+            "base_return_pct": round((base_price / last_price - 1) * 100, 2),
+            "low_return_pct": round((low_price / last_price - 1) * 100, 2),
+            "high_return_pct": round((high_price / last_price - 1) * 100, 2),
+        })
+    return {
+        "status": "available",
+        "method": "Illustrative range from the last year of daily log-return drift and volatility; central 80% normal-model band, assuming market behavior stays similar.",
+        "observations": len(log_returns),
+        "daily_volatility_pct": round(daily_volatility * 100, 2),
+        "scenarios": scenarios,
+    }
+
+
 def _technical_snapshot(symbol: str) -> Dict[str, Any]:
     try:
         frame = fetch_ohlcv(symbol, period="1y")
@@ -65,6 +108,7 @@ def _technical_snapshot(symbol: str) -> Dict[str, Any]:
             "return63_pct": round((last / float(close.iloc[-64]) - 1) * 100, 2) if len(frame) >= 64 else None,
             "mansfield_rs63": round(float(rs_series.iloc[-1]), 2) if rs_series is not None and len(rs_series) else None,
             "trend": trend,
+            "forecast": _historical_scenarios(close, last),
         }
     except Exception as exc:
         logger.info("Daily technical snapshot unavailable for %s: %s", symbol, exc)

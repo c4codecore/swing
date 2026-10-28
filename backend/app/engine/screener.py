@@ -34,6 +34,7 @@ class ScreenerEngine:
                 signal.update({
                     "symbol": symbol.replace(".NS", ""), "raw_symbol": symbol,
                     "current_price": cur_price, "change_pct": change_pct,
+                    "signal_date": df.index[-1].strftime("%Y-%m-%d"),
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 })
                 if strat_key == "multi_factor":

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -35,11 +35,15 @@ from app.core.config import BENCHMARK_INDEX, DEFAULT_UNIVERSE
 from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
 from app.core.indicators import ema, rsi
 from app.core.stock_research import get_stock_research
+from app.core.stock_universe import get_nse_equities, is_supported_nse_equity
+from app.core.signal_history import capture_signals, get_signal_history
+from app.core.portfolio_storage import get_manual_holdings, replace_manual_holdings
 from app.engine.regime import analyze_market_regime
 from app.engine.intraday import analyze_intraday
 from app.engine.options import build_nifty_options_plan
 from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
+from app.engine.institutional_flow import get_flow_watchlist
 from app.engine.backtester import run_strategy_backtest
 from app.core.iifl_market_data import (
     IIFLNotConfigured,
@@ -54,7 +58,7 @@ from app.core.iifl_market_data import (
 )
 
 app = FastAPI(
-    title="Quantitative Swing Trading Engine",
+    title="MarketVoice API",
     description="Systematic NSE Screener, Adaptive Regime Classifier & Backtesting Engine",
     version="2.0.0"
 )
@@ -86,7 +90,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "swing-trading-engine", "version": "2.0.0"}
+    return {"status": "ok", "service": "marketvoice-api", "version": "2.0.0"}
 
 
 @app.get("/api/market/live/status")
@@ -187,26 +191,26 @@ def _analyze_portfolio_holding(holding: dict) -> dict:
             action = "REVIEW_SELL"
             reasons = []
             if trend_broken:
-                reasons.append("Latest daily close is below EMA 50 and EMA 20 is below EMA 50 (weak trend).")
+                reasons.append("The latest share price is below its 50-day average, and its recent average is also falling.")
             if weak_momentum:
-                reasons.append("RSI is below 30 and 20-session return is negative (weak momentum).")
+                reasons.append("The share price has been especially weak over the past month.")
         else:
             action = "HOLD"
             reasons = []
             if close >= e50:
-                reasons.append("Latest daily close is at or above EMA 50.")
+                reasons.append("The latest share price is at or above its 50-day average.")
             if e20 >= e50:
-                reasons.append("EMA 20 is at or above EMA 50.")
+                reasons.append("The recent average price is at or above the 50-day average.")
             if rsi_now >= 30:
-                reasons.append("RSI is not in the oversold range below 30.")
+                reasons.append("The recent price check has not shown an especially sharp fall.")
             if not reasons:
-                reasons.append("No defined exit warning was triggered by this daily trend check.")
+                reasons.append("This daily price check did not find a strong reason to exit.")
         invested_value = quantity * average_price if quantity is not None and average_price is not None else None
         current_value = quantity * last_price if quantity is not None and last_price is not None else None
         unrealized_pnl = (last_price - average_price) * quantity if last_price is not None and average_price is not None and quantity is not None else _number(holding.get("pnl"))
         pnl_pct = ((last_price - average_price) / average_price * 100) if last_price is not None and average_price else None
         if action == "REVIEW_SELL":
-            trend_summary = "Price 50-day trend line (EMA 50) se neeche hai aur short-term trend kamzor hai." if trend_broken else "Recent momentum kamzor hai; price aur trend ko dhyan se review karein."
+            trend_summary = "Share ka daam pichhle 50 din ke ausat se neeche hai aur haal ka rukh bhi kamzor hai." if trend_broken else "Share ka daam pichhle mahine kamzor raha hai; price ko dhyan se dekhein."
             position_summary = f"Average buy price ke muqable abhi lagbhag ₹{abs(unrealized_pnl):,.0f} {'loss' if unrealized_pnl < 0 else 'profit'} ({pnl_pct:+.1f}%). " if unrealized_pnl is not None and pnl_pct is not None else ""
             beginner_verdict = f"{trend_summary} {position_summary}Ghabra kar faisla na karein aur bina plan ke aur shares na jodein. Apni pehle se tay loss-limit aur investment ka time-horizon check karein; limit toot gayi ho ya yeh short-term trade tha, toh position kam karne ya bechne par vichaar karein."
         elif action == "HOLD":
@@ -262,6 +266,28 @@ class ManualPortfolioRequest(BaseModel):
     holdings: list[ManualHolding] = Field(max_length=100)
 
 
+@app.get("/api/portfolio/manual")
+def read_manual_portfolio():
+    """Return the user's locally persisted manual portfolio entries."""
+    try:
+        holdings = get_manual_holdings()
+        return {"holdings": holdings, "count": len(holdings), "source": "Local persistent portfolio"}
+    except Exception:
+        logger.exception("Unable to load saved manual portfolio")
+        raise HTTPException(status_code=500, detail="Unable to load saved portfolio.")
+
+
+@app.put("/api/portfolio/manual")
+def save_manual_portfolio(request: ManualPortfolioRequest):
+    """Replace the saved manual holdings after an add, edit, or delete."""
+    try:
+        holdings = replace_manual_holdings([holding.model_dump() for holding in request.holdings])
+        return {"holdings": holdings, "count": len(holdings), "source": "Local persistent portfolio"}
+    except Exception:
+        logger.exception("Unable to save manual portfolio")
+        raise HTTPException(status_code=500, detail="Unable to save portfolio changes.")
+
+
 @app.post("/api/portfolio/manual-review")
 def manual_portfolio_review(request: ManualPortfolioRequest):
     """Review user-entered holdings without calling IIFL account endpoints."""
@@ -280,7 +306,7 @@ def manual_portfolio_review(request: ManualPortfolioRequest):
         "holdings": analyzed,
         "source": "Manual entries",
         "analysis_as_of": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat(timespec="seconds"),
-        "method": "Daily trend check: close vs EMA 50, EMA 20 vs EMA 50, RSI 14, and 20-session return.",
+            "method": "Daily check: today's price and recent price changes compared with usual prices.",
         "disclaimer": "Technical research screen only, not personalized financial advice. Signals do not place orders; consider your own risk limits, costs, taxes, and investment horizon.",
     }
 
@@ -295,7 +321,7 @@ def portfolio_analysis(force_refresh: bool = Query(False, description="Refresh h
             **portfolio,
             "holdings": analyzed,
             "analysis_as_of": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat(timespec="seconds"),
-            "method": "Daily trend check: close vs EMA 50, EMA 20 vs EMA 50, and RSI 14 with 20-session return.",
+            "method": "Daily check: today's price and recent price changes compared with usual prices.",
             "disclaimer": "Research signal only. It is not personalized financial advice and does not place orders. Review costs, taxes, time horizon, and your own risk limits before trading.",
         }
     except IIFLNotConfigured as exc:
@@ -354,6 +380,46 @@ def run_screener(
         raise HTTPException(status_code=500, detail="Unable to complete market scan.")
 
 
+@app.get("/api/flow-watchlist")
+def read_flow_watchlist(
+    limit: int = Query(10, ge=10, le=20, description="Number of leaders and laggards to return per side"),
+    refresh: bool = False,
+):
+    """Rank the liquid watch universe by daily OHLCV accumulation/distribution proxy."""
+    try:
+        return get_flow_watchlist(limit=limit, force_refresh=refresh)
+    except Exception as exc:
+        logger.exception("Unable to build the volume flow watchlist")
+        raise HTTPException(status_code=503, detail="Volume flow scan is unavailable. Try again when daily market data is available.") from exc
+
+
+class SignalHistoryCaptureRequest(BaseModel):
+    signals: List[Dict[str, Any]] = Field(default_factory=list, max_length=500)
+    max_holding_days: Literal[15, 30] = 15
+
+
+@app.post("/api/history/capture")
+def capture_signal_history(req: SignalHistoryCaptureRequest):
+    """Persist scan setups once per signal date, stock, and strategy."""
+    try:
+        return capture_signals(req.signals, req.max_holding_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("Unable to save signal history")
+        raise HTTPException(status_code=500, detail="Unable to save signal history.")
+
+
+@app.get("/api/history")
+def read_signal_history():
+    """Refresh open setups using completed daily candles and return date-sorted outcomes."""
+    try:
+        return get_signal_history()
+    except Exception:
+        logger.exception("Unable to load signal history")
+        raise HTTPException(status_code=500, detail="Unable to load signal history.")
+
+
 class BacktestRequest(BaseModel):
     strategy: str = Field(default="trend_pullback", pattern=r"^[a-z_]+$")
     period: Literal["6mo", "1y", "2y", "3y"] = "2y"
@@ -386,9 +452,14 @@ def execute_backtest(req: BacktestRequest):
 
 @app.get("/api/symbols")
 def get_universe_symbols():
-    """Returns list of supported liquid symbols."""
-    clean = [s.replace(".NS", "") for s in DEFAULT_UNIVERSE]
-    return {"count": len(clean), "symbols": clean}
+    """Returns the latest NSE main-board and SME equity symbol list."""
+    stocks, metadata = get_nse_equities()
+    return {
+        "count": len(stocks),
+        "symbols": [stock["symbol"] for stock in stocks],
+        "stocks": stocks,
+        **metadata,
+    }
 
 
 @app.get("/api/chart/{symbol}")
@@ -400,7 +471,7 @@ def get_chart_data(symbol: str, period: Literal["1mo", "3mo", "6mo", "1y", "2y",
         if not re.fullmatch(r"[A-Za-z0-9&._^-]{1,24}", symbol):
             raise HTTPException(status_code=422, detail="Invalid symbol format.")
         ns_symbol = symbol.upper() if symbol.startswith("^") else (symbol.upper() if symbol.upper().endswith(".NS") else f"{symbol.upper()}.NS")
-        if ns_symbol not in set(DEFAULT_UNIVERSE) | {BENCHMARK_INDEX}:
+        if ns_symbol != BENCHMARK_INDEX and not is_supported_nse_equity(ns_symbol):
             raise HTTPException(status_code=404, detail="Symbol is not in the supported universe.")
         df = fetch_ohlcv(ns_symbol, period=period)
         if df.empty or len(df) < 20:
@@ -444,7 +515,7 @@ def get_stock_research_data(symbol: str):
     if not re.fullmatch(r"[A-Za-z0-9&._^-]{1,24}", symbol):
         raise HTTPException(status_code=422, detail="Invalid symbol format.")
     ns_symbol = symbol.upper() if symbol.upper().endswith(".NS") else f"{symbol.upper()}.NS"
-    if ns_symbol not in set(DEFAULT_UNIVERSE):
+    if not is_supported_nse_equity(ns_symbol):
         raise HTTPException(status_code=404, detail="Symbol is not in the supported universe.")
     try:
         return get_stock_research(ns_symbol)
