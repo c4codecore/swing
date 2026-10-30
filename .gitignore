@@ -7,5 +7,9 @@ backend/.env.*
 backend/data/*.sqlite3
 backend/data/*.sqlite3-shm
 backend/data/*.sqlite3-wal
+backend/data/*.cache.csv
 __pycache__/
 *.py[cod]
+backend/.venv/
+backend/.tmp/
+.pytest_cache/

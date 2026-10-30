@@ -58,6 +58,26 @@ def _create_schema(connection: Any) -> None:
             applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS regime_history (
+            evaluated_on TEXT PRIMARY KEY,
+            raw_regime TEXT NOT NULL,
+            confirmed_regime TEXT NOT NULL,
+            days_in_state INTEGER NOT NULL,
+            pending_regime TEXT,
+            pending_days INTEGER NOT NULL DEFAULT 0,
+            pending_required_days INTEGER NOT NULL DEFAULT 0,
+            sizing_weight DOUBLE PRECISION NOT NULL,
+            metrics_json TEXT NOT NULL,
+            breadth_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_regime_history_date ON regime_history(evaluated_on DESC)")
+    connection.execute(
+        "INSERT INTO marketvoice_migrations (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+        ("regime_history_v1",),
+    )
 
 
 def _sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:

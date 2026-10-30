@@ -12,6 +12,14 @@ function price(value) {
     : `₹${number.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
+function candleTime(signal) {
+  if (!signal.last_candle_at) return 'Candle time unavailable';
+  const time = new Date(signal.last_candle_at).toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short'
+  });
+  return `${signal.stale ? 'STALE · ' : ''}5-minute candle ${time} IST · ${Math.floor((signal.data_delay_seconds || 0) / 60)}m delay`;
+}
+
 const STRATEGY_LABELS = {
   vwap_opening_drive: 'Gap + Volume Drive',
   orb_prebreakout: 'Breakout Setup',
@@ -107,12 +115,12 @@ function IntradayScreenerView({ connected, onConnect }) {
         </article>
         <article className="metric-card tone-lilac">
           <div className="metric-top"><span>BULLISH SETUPS</span><span className="metric-icon"><TrendingUp size={16} /></span></div>
-          <div className="metric-value">{summary.bullish || 0}</div>
+          <div className="metric-value">{allSignals.filter(signal => signal.direction === 'BULLISH').length}</div>
           <div className="metric-bottom"><span className="metric-change positive"><ArrowUpRight size={14} />Upside momentum</span></div>
         </article>
         <article className="metric-card tone-peach">
           <div className="metric-top"><span>BEARISH SETUPS</span><span className="metric-icon"><ArrowDownRight size={16} /></span></div>
-          <div className="metric-value">{summary.bearish || 0}</div>
+          <div className="metric-value">{allSignals.filter(signal => signal.direction === 'BEARISH').length}</div>
           <div className="metric-bottom"><span className="metric-change negative"><ArrowDownRight size={14} />Downside setups</span></div>
         </article>
         <article className="metric-card tone-mint">
@@ -121,6 +129,7 @@ function IntradayScreenerView({ connected, onConnect }) {
           <div className="metric-bottom"><span>Stocks scanned successfully</span></div>
         </article>
       </section>
+      <p className="filter-rejection-summary">Filtered out: {data.filter_rejections?.min_price || 0} (price), {data.filter_rejections?.avg_traded_value || 0} (liquidity), {data.filter_rejections?.insufficient_history || 0} (history), {data.filter_rejections?.stale_data || 0} (stale), {data.filter_rejections?.sme || 0} (SME), {(data.filter_rejections?.circuit_band || 0) + (data.filter_rejections?.circuit_band_heuristic || 0)} (price band), {typeof data.filter_rejections?.asm_gsm === 'number' ? data.filter_rejections.asm_gsm : 0} (ASM/GSM).</p>
 
       {/* Strategy Distribution */}
       {Object.keys(stratDist).length > 0 && <div className="intraday-strat-dist">
@@ -191,7 +200,7 @@ function IntradayScreenerView({ connected, onConnect }) {
                   <td>
                     <div className="instrument">
                       <span className={`instrument-token ${isBullish ? '' : 'bearish-token'}`}>{signal.symbol.slice(0, 1)}</span>
-                      <span><b>{signal.symbol}</b><small>{signal.strategy_title}</small></span>
+                      <span><b>{signal.symbol}</b><small>{signal.strategy_title}</small><small className={signal.stale ? 'stale' : ''}>{candleTime(signal)}</small></span>
                     </div>
                   </td>
                   <td><span className="strategy-tag">{STRATEGY_ICONS[signal.strategy] || '📊'} {STRATEGY_LABELS[signal.strategy] || signal.strategy_title}</span></td>
@@ -215,7 +224,7 @@ function IntradayScreenerView({ connected, onConnect }) {
           </div>
           <div className="table-footer">
             <span><b>{filteredSignals.length}</b> intraday setups shown</span>
-            <span>Based on daily price analysis · prices may differ intraday</span>
+            <span>Daily context + completed 5-minute bars · timestamps are IST</span>
           </div>
         </div>
       ) : (
@@ -235,6 +244,7 @@ function IntradayScreenerView({ connected, onConnect }) {
               <div><span>TARGET 2</span><b className="target-value">{price(signal.target_2)}</b></div>
             </div>
             <div className="intraday-card-reasons">
+              <small className={signal.stale ? 'stale' : 'fresh'}>{candleTime(signal)}</small>
               <strong>Why this setup</strong>
               <ul>{(signal.reasons || []).slice(0, 3).map((reason, i) => <li key={i}>{reason}</li>)}</ul>
             </div>

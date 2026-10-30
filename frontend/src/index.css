@@ -1241,6 +1241,7 @@ body { background: radial-gradient(ellipse at 78% -18%, rgba(176,170,242,.23), t
 .options-wait-state { margin-top: 12px; }
 .trading-disclaimer { margin: 14px 2px 8px; color: #777281; font-size: 9px; line-height: 1.6; }
 .trading-data-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: #777281; font-size: 8px; }
+.filter-rejection-summary { margin: 8px 0 12px; color: #777281; font-size: 11px; line-height: 1.5; }
 .trading-data-foot > span:first-child { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: .06em; }
 .trading-data-foot i { width: 6px; height: 6px; border-radius: 50%; background: #438364; }
 .trading-data-foot .stale i { background: #b37b3e; }
