@@ -134,12 +134,12 @@
 }
 
 * { box-sizing: border-box; }
-html { min-height: 100%; background: var(--bg); scroll-behavior: smooth; font-size: 18px; }
-html[data-font-scale="115"] { font-size: 20.7px; }
-html[data-font-scale="130"] { font-size: 23.4px; }
-html[data-font-scale="150"] { font-size: 27px; }
-html[data-font-scale="175"] { font-size: 31.5px; }
-body { min-height: 100vh; margin: 0; background: var(--bg); color: var(--text); font-size: var(--font-md); font-weight: 500; line-height: var(--line-height); }
+html { min-height: 100%; background: var(--bg); scroll-behavior: smooth; font-size: 112.5%; }
+html[data-font-scale="115"] { font-size: 129.375%; }
+html[data-font-scale="130"] { font-size: 146.25%; }
+html[data-font-scale="150"] { font-size: 168.75%; }
+html[data-font-scale="175"] { font-size: 196.875%; }
+body { min-height: 100vh; min-width: 0; margin: 0; overflow-x: clip; background: var(--bg); color: var(--text); font-size: var(--font-md); font-weight: 500; line-height: var(--line-height); }
 body :where(*) { font-size: max(1rem, var(--font-md)) !important; font-weight: 500 !important; line-height: 1.5 !important; }
 body :where(h1, h2, h3, h4, h5, h6, b, strong, th, label, button, .metric-value, .hero-market-price-row strong, .exposure-card strong, .metric-val) { font-weight: 700 !important; }
 body :where(h1, .welcome-row h1, .module-heading h1) { font-size: var(--font-2xl) !important; }
@@ -175,7 +175,7 @@ img, svg { max-width: 100%; }
 .avatar { width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border: var(--border-control); border-radius: var(--radius-sm); font-weight: 700; }
 .profile-copy { display: grid; }
 .profile-copy small { color: var(--text-muted); }
-.workspace { min-width: 0; margin-left: var(--rail-width); }
+.workspace { width: min(100%, calc(100vw - var(--rail-width))); min-width: 0; margin-left: var(--rail-width); }
 .topbar { min-height: 4.25rem; position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) clamp(var(--space-3), 3vw, var(--space-6)); border-bottom: var(--border-card); background: var(--bg); }
 .topbar-left, .topbar-actions { min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
 .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
@@ -188,7 +188,7 @@ img, svg { max-width: 100%; }
 .scan-button, .primary-button { padding: var(--space-2) var(--space-4); border-style: double; font-weight: 700; }
 .scan-button:disabled, button:disabled { cursor: not-allowed; opacity: .7; }
 .spin { animation: none !important; }
-.page-content { width: min(100%, var(--content-width)); min-width: 0; margin-inline: auto; padding: var(--space-5) clamp(var(--space-3), 3vw, var(--space-6)); }
+.page-content { width: min(100%, var(--content-width)); max-width: 100%; min-width: 0; margin-inline: auto; padding: var(--space-5) clamp(var(--space-3), 3vw, var(--space-6)); }
 .mobile-menu-toggle, .mobile-drawer-close, .mobile-drawer-backdrop, .mobile-bottom-nav { display: none; }
 
 /* Display controls */
@@ -255,6 +255,10 @@ img, svg { max-width: 100%; }
 .search-box input, .history-search input, .stock-analysis-input-wrap input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--text); outline: 0; }
 .search-box button { min-width: var(--target-size); border: var(--border-control); background: var(--surface-raised); }
 .screener-controls, .intraday-filter-row, .history-filters, .trading-module-actions, .portfolio-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.setup-actions, .portfolio-entry-actions, .flow-controls, .trade-log-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.setup-actions > *, .portfolio-entry-actions > *, .stock-analysis-search-row > * { max-width: 100%; }
+.portfolio-entry input, .portfolio-symbol-search input, .stock-analysis-input-wrap input { min-width: 0; }
+details summary { cursor: pointer; }
 .strategy-select { max-width: 100%; padding: var(--space-2) var(--space-3); }
 .view-toggle { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .view-toggle button { min-width: var(--target-size); }
@@ -314,6 +318,9 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .card-prices-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .card-prices > div { min-width: 0; display: grid; gap: var(--space-1); padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); }
 .card-prices b { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.card-score { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); }
+.setup-card-details summary { min-height: var(--target-size); display: flex; align-items: center; padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-md); cursor: pointer; font-weight: 700; }
+.setup-card-details ul { padding-inline-start: var(--space-5); }
 .text-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
 .empty-panel, .empty-state { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-6); border: var(--border-card); border-radius: var(--radius-lg); background: var(--surface); text-align: center; }
 .empty-panel > span { color: var(--text-muted); }
@@ -343,6 +350,9 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .portfolio-indicators, .portfolio-connection, .portfolio-symbol-suggestions button, .history-filters > label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .portfolio-connection { border: var(--border-control); padding: var(--space-2); border-radius: var(--radius-sm); }
 .flow-panel { margin-block: var(--space-3); }
+.instrument-open { min-width: 0; min-height: var(--target-size); display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1); border: 0; background: transparent; text-align: left; }
+.history-more-details summary { min-height: var(--target-size); display: flex; align-items: center; padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); cursor: pointer; font-weight: 700; }
+.history-more-details small { display: block; padding: var(--space-2); }
 .flow-table td strong, .flow-table td small { display: block; }
 .options-leg-row { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--border-soft); }
 .history-date-group { margin-block: var(--space-3); }
@@ -350,6 +360,9 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .history-outcome.open { border-style: dotted; }
 .history-outcome.target_hit { border-style: double; }
 .history-outcome.stop_loss { border-style: dashed; }
+.trade-exit-reason, .trade-result-chip { min-height: var(--target-size); display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface-raised); }
+.trade-exit-reason.win, .trade-result-chip.win { border-style: double; }
+.trade-exit-reason.loss, .trade-result-chip.loss { border-style: dashed; border-width: .1875rem; }
 .history-disclaimer, .trading-disclaimer, .stock-analysis-disclaimer { margin-block: var(--space-4); }
 .stock-analysis-section-heading { align-items: flex-end; }
 .stock-analysis-section-heading h2 { margin: var(--space-1) 0; }
@@ -403,23 +416,105 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
   .workspace { margin-left: 13rem; }
   .market-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 767px) {
-  .side-rail { width: min(22rem, 86vw); max-width: 86vw; height: 100dvh; inset: 0 auto 0 0; z-index: 220; padding: var(--space-3); transform: translateX(-110%); transition: transform var(--motion-medium) ease; }
+@media (max-width: 900px) {
+  .side-rail { width: min(22rem, 86vw); max-width: 86vw; height: 100dvh; inset: 0 auto 0 0; z-index: 220; padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom)); transform: translateX(-110%); transition: transform var(--motion-medium) ease; }
   .side-rail.mobile-open { transform: translateX(0); }
   .workspace { width: 100%; margin-left: 0; }
   .mobile-menu-toggle, .mobile-drawer-close { min-width: var(--target-size); min-height: var(--target-size); display: grid; }
   .mobile-drawer-backdrop { position: fixed; inset: 0; z-index: 210; display: block; background: var(--overlay); }
   .side-rail-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-  .topbar { min-height: 4.5rem; padding: var(--space-2) var(--space-3); }
+  .topbar { min-height: 4.5rem; position: relative; padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2); }
   .topbar-actions .session-pill { display: none; }
   .page-content { padding: var(--space-3) var(--space-3) calc(var(--mobile-nav-height) + env(safe-area-inset-bottom) + var(--space-4)); }
-  .mobile-bottom-nav { min-height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 100; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: var(--space-1) var(--space-1) env(safe-area-inset-bottom); border-top: var(--border-card); background: var(--surface); }
+  .mobile-bottom-nav { min-height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom)); position: fixed; inset: auto 0 0; z-index: 100; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-1) var(--space-2) env(safe-area-inset-bottom); border-top: var(--border-card); background: var(--surface); }
   .bottom-nav-item { min-width: 0; min-height: var(--target-size); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); padding: var(--space-1); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-weight: 700; }
   .welcome-row, .module-heading { display: grid; }
   .hero-feature-card { min-height: 0; }
   .insight-banner { align-items: flex-start; flex-wrap: wrap; }
   .banner-action { width: 100%; }
   .appearance-controls-compact { margin-top: var(--space-3); }
+  .font-scale-compact { margin-block: var(--space-2); }
+  .view-toggle button[aria-label="Table view"] { display: none; }
+  html, body, #root, .spatial-app, .workspace, .page-content { width: 100%; max-width: 100%; min-width: 0; overflow-x: clip; }
+  .table-scroll, .history-table-wrap, .flow-table-wrap, .options-legs-table { width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
+  .setups-table, .history-table, .flow-table, .backtest-table, .trade-table, .trade-daily-table { width: 100%; min-width: 0; display: block; border-collapse: separate; }
+  .setups-table thead, .history-table thead, .flow-table thead, .backtest-table thead, .trade-table thead, .trade-daily-table thead { width: 1px; height: 1px; position: absolute; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+  .setups-table tbody, .history-table tbody, .flow-table tbody, .backtest-table tbody, .trade-table tbody, .trade-daily-table tbody { display: grid; gap: var(--space-3); }
+  .setups-table tbody tr, .history-table tbody tr, .flow-table tbody tr, .backtest-table tbody tr, .trade-table tbody tr, .trade-daily-table tbody tr { min-width: 0; display: grid; gap: var(--space-1); padding: var(--space-3); border: var(--border-card); border-radius: var(--radius-lg); background: var(--surface); }
+  .setups-table tbody td, .history-table tbody td, .flow-table tbody td, .backtest-table tbody td, .trade-table tbody td, .trade-daily-table tbody td { min-width: 0; display: grid; grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr); align-items: start; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--border-soft); overflow-wrap: anywhere; }
+  .setups-table tbody td::before, .history-table tbody td::before, .flow-table tbody td::before, .backtest-table tbody td::before, .trade-table tbody td::before, .trade-daily-table tbody td::before { content: attr(data-label); color: var(--text-muted); font-weight: 700; }
+  .setups-table.swing-table td:nth-child(1)::before { content: "Share"; }
+  .setups-table.swing-table td:nth-child(2)::before { content: "Signal"; }
+  .setups-table.swing-table td:nth-child(3)::before { content: "Price change"; }
+  .setups-table.swing-table td:nth-child(4)::before { content: "Entry"; }
+  .setups-table.swing-table td:nth-child(5)::before { content: "Stop"; }
+  .setups-table.swing-table td:nth-child(6)::before { content: "Target"; }
+  .setups-table.swing-table td:nth-child(7)::before { content: "Risk / reward"; }
+  .setups-table.swing-table td:nth-child(8)::before { content: "Score"; }
+  .setups-table.swing-table td:nth-child(9)::before { content: "Actions"; }
+  .setups-table.intraday-table td:nth-child(1)::before { content: "Share"; }
+  .setups-table.intraday-table td:nth-child(2)::before { content: "Strategy"; }
+  .setups-table.intraday-table td:nth-child(3)::before { content: "Direction"; }
+  .setups-table.intraday-table td:nth-child(4)::before { content: "Price change"; }
+  .setups-table.intraday-table td:nth-child(5)::before { content: "Entry"; }
+  .setups-table.intraday-table td:nth-child(6)::before { content: "Stop loss"; }
+  .setups-table.intraday-table td:nth-child(7)::before { content: "Target 1"; }
+  .setups-table.intraday-table td:nth-child(8)::before { content: "Target 2"; }
+  .setups-table.intraday-table td:nth-child(9)::before { content: "Risk / reward"; }
+  .setups-table.intraday-table td:nth-child(10)::before { content: "Score"; }
+  .setups-table.intraday-table td:nth-child(11)::before { content: "Actions"; }
+  .setups-table.regime-history-table td:nth-child(1)::before { content: "Date"; }
+  .setups-table.regime-history-table td:nth-child(2)::before { content: "Raw state"; }
+  .setups-table.regime-history-table td:nth-child(3)::before { content: "Rule"; }
+  .setups-table.regime-history-table td:nth-child(4)::before { content: "Confirmed state"; }
+  .setups-table.regime-history-table td:nth-child(5)::before { content: "Days in state"; }
+  .setups-table.regime-history-table td:nth-child(6)::before { content: "Pending"; }
+  .setups-table.regime-history-table td:nth-child(7)::before { content: "Sizing weight"; }
+  .history-table td:nth-child(1)::before { content: "Share and reason"; }
+  .history-table td:nth-child(2)::before { content: "Entry"; }
+  .history-table td:nth-child(3)::before { content: "Stop loss"; }
+  .history-table td:nth-child(4)::before { content: "Target"; }
+  .history-table td:nth-child(5)::before { content: "Price now / exit"; }
+  .history-table td:nth-child(6)::before { content: "Outcome"; }
+  .history-table td:nth-child(7)::before { content: "Price change"; }
+  .flow-table td:nth-child(1)::before { content: "Share"; }
+  .flow-table td:nth-child(2)::before { content: "Estimated activity"; }
+  .flow-table td:nth-child(3)::before { content: "Price pressure"; }
+  .flow-table td:nth-child(4)::before { content: "Trading vs usual"; }
+  .flow-table td:nth-child(5)::before { content: "Price now"; }
+  .backtest-table td:nth-child(1)::before { content: "Market mood"; }
+  .backtest-table td:nth-child(2)::before { content: "Trades"; }
+  .backtest-table td:nth-child(3)::before { content: "Made money"; }
+  .backtest-table td:nth-child(4)::before { content: "Account change"; }
+  .backtest-table td:nth-child(5)::before { content: "Gains vs losses"; }
+  .trade-table td:nth-child(1)::before { content: "Share"; }
+  .trade-table td:nth-child(2)::before { content: "Market mood"; }
+  .trade-table td:nth-child(3)::before { content: "Entry date"; }
+  .trade-table td:nth-child(4)::before { content: "Exit date"; }
+  .trade-table td:nth-child(5)::before { content: "Entry price"; }
+  .trade-table td:nth-child(6)::before { content: "Exit price"; }
+  .trade-table td:nth-child(7)::before { content: "Gain or loss"; }
+  .trade-table td:nth-child(8)::before { content: "Days held"; }
+  .trade-table td:nth-child(9)::before { content: "Exit reason"; }
+  .trade-daily-table td:nth-child(1)::before { content: "Date"; }
+  .trade-daily-table td:nth-child(2)::before { content: "Open"; }
+  .trade-daily-table td:nth-child(3)::before { content: "High"; }
+  .trade-daily-table td:nth-child(4)::before { content: "Low"; }
+  .trade-daily-table td:nth-child(5)::before { content: "Close"; }
+  .trade-daily-table td:nth-child(6)::before { content: "Trade mark"; }
+  .trade-daily-table td:nth-child(7)::before { content: "Day change"; }
+  .trade-daily-table td:nth-child(8)::before { content: "Return from entry"; }
+  .table-shell { overflow: visible; }
+  .setup-grid { grid-template-columns: minmax(0, 1fr); }
+  .setup-card { cursor: default; }
+  .setup-card .card-end { align-items: stretch; }
+  .setup-card .card-end > button { flex: 1 1 100%; }
+  .trade-detail-row td[colspan] { display: block; }
+  .trade-daily-table { width: 100%; min-width: 0; }
+  .trade-daily-table th, .trade-daily-table td { white-space: normal; }
+  .setup-card, .portfolio-card, .history-date-group, .flow-panel { max-width: 100%; }
+  [data-keyboard-open="true"] .mobile-bottom-nav { display: none; }
+  [data-keyboard-open="true"] .page-content { padding-bottom: var(--space-4); }
 }
 @media (max-width: 600px) {
   .market-strip { grid-template-columns: 1fr; }

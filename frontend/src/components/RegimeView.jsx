@@ -121,7 +121,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
     <section className="glass-card regime-history">
       <h3><Zap size={18} aria-hidden="true" /> Last 30 daily regimes</h3>
       <p>{regimeData.catch_all_days_last_30 ?? 0} of the last {history.length} days used the catch-all.</p>
-      {history.length ? <div className="table-scroll"><table className="setups-table"><thead><tr><th>DATE</th><th>RAW</th><th>RULE</th><th>CONFIRMED</th><th>DAYS IN STATE</th><th>PENDING</th><th>WEIGHT</th></tr></thead><tbody>
+      {history.length ? <div className="table-scroll"><table className="setups-table regime-history-table"><thead><tr><th>DATE</th><th>RAW</th><th>RULE</th><th>CONFIRMED</th><th>DAYS IN STATE</th><th>PENDING</th><th>WEIGHT</th></tr></thead><tbody>
         {history.map(item => <tr key={item.evaluated_on}>
           <td>{item.evaluated_on}</td><td>{LABELS[item.raw_regime] || item.raw_regime}</td><td>{item.classification_source === 'catch_all' ? 'Catch-all' : (item.matching_rule || '—')}</td><td>{LABELS[item.confirmed_regime] || item.confirmed_regime}</td><td>{item.days_in_state}</td>
           <td>{item.pending_regime ? `${LABELS[item.pending_regime] || item.pending_regime} ${item.pending_days}/${item.pending_required_days}` : '—'}</td><td>{Math.round(item.sizing_weight * 100)}%</td>

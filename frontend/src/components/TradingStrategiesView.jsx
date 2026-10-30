@@ -62,7 +62,14 @@ function IntradayScreenerView({ connected, onConnect }) {
     }
   };
 
-  useEffect(() => { loadScreener(false); }, []);
+  useEffect(() => {
+    loadScreener(false);
+    const query = window.matchMedia('(max-width: 900px)');
+    const useCards = () => { if (query.matches) setViewMode('grid'); };
+    useCards();
+    query.addEventListener?.('change', useCards);
+    return () => query.removeEventListener?.('change', useCards);
+  }, []);
 
   const allSignals = data?.signals || [];
   const filteredSignals = useMemo(() => allSignals.filter(signal => {
@@ -162,8 +169,8 @@ function IntradayScreenerView({ connected, onConnect }) {
           <option value="BEARISH">Bearish only</option>
         </select>
         <div className="view-toggle">
-          <button onClick={() => setViewMode('table')} className={viewMode === 'table' ? 'active' : ''} aria-label="Table view"><Table2 size={16} /></button>
-          <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-label="Card view"><LayoutDashboard size={16} /></button>
+          <button onClick={() => setViewMode(window.matchMedia('(max-width: 900px)').matches ? 'grid' : 'table')} className={viewMode === 'table' ? 'active' : ''} aria-label="Table view" aria-pressed={viewMode === 'table'}><Table2 size={16} /></button>
+          <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-label="Card view" aria-pressed={viewMode === 'grid'}><LayoutDashboard size={16} /></button>
         </div>
       </div>
 
@@ -178,7 +185,7 @@ function IntradayScreenerView({ connected, onConnect }) {
       ) : viewMode === 'table' ? (
         <div className="table-shell">
           <div className="table-scroll">
-            <table className="setups-table">
+            <table className="setups-table intraday-table">
               <thead><tr>
                 <th>STOCK</th>
                 <th>STRATEGY</th>

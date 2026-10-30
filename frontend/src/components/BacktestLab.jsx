@@ -85,8 +85,8 @@ export default function BacktestLab() {
     const areaPoints = `${getX(0).toFixed(1)},${height - pad.bottom} ${points} ${getX(curve.length - 1).toFixed(1)},${height - pad.bottom}`;
 
     const isPositive = results.total_return_pct >= 0;
-    const strokeColor = isPositive ? '#10b981' : '#f43f5e';
-    const gradId = isPositive ? 'eqGradGreen' : 'eqGradRed';
+    const strokeColor = '#d8d8d8';
+    const gradId = 'eqGradGray';
 
     const activePoint = hoveredPoint !== null ? curve[hoveredPoint] : curve[curve.length - 1];
     const activePointIdx = hoveredPoint !== null ? hoveredPoint : curve.length - 1;
@@ -110,13 +110,9 @@ export default function BacktestLab() {
           onMouseLeave={() => setHoveredPoint(null)}
         >
           <defs>
-            <linearGradient id="eqGradGreen" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.38"/>
-              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0"/>
-            </linearGradient>
-            <linearGradient id="eqGradRed" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.38"/>
-              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.0"/>
+            <linearGradient id="eqGradGray" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#d8d8d8" stopOpacity="0.25"/>
+              <stop offset="100%" stopColor="#d8d8d8" stopOpacity="0.0"/>
             </linearGradient>
           </defs>
 
@@ -157,7 +153,7 @@ export default function BacktestLab() {
           }}>
             <span style={{ color: 'var(--text-dim)' }}>DATE: <b style={{ color: '#fff' }}>{activePoint.date}</b></span>
             <span style={{ color: 'var(--text-dim)' }}>
-              PORTFOLIO: <b style={{ color: activePoint.equity >= 100 ? '#10b981' : '#f43f5e' }}>₹{activePoint.equity?.toFixed(2)}</b> ({activePoint.equity >= 100 ? '+' : ''}{(activePoint.equity - 100).toFixed(2)}%)
+              PORTFOLIO: <b>₹{activePoint.equity?.toFixed(2)}</b> ({activePoint.equity >= 100 ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs((activePoint.equity - 100)).toFixed(2)}%)
             </span>
           </div>
         )}
@@ -407,7 +403,7 @@ export default function BacktestLab() {
                 <Activity size={18} color="#a855f7" /> Results in different market moods
               </h3>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+                <table className="backtest-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-dim)', textAlign: 'left' }}>
                       <th style={{ padding: '0.75rem 1rem' }}>MARKET MOOD</th>
@@ -420,15 +416,15 @@ export default function BacktestLab() {
                   <tbody>
                     {Object.entries(results.regime_breakdown).map(([regKey, rData]) => (
                       <tr key={regKey} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: regKey.includes('BULL') ? '#10b981' : '#f43f5e' }}>
+                        <td className={`regime-badge state-${regKey.toLowerCase().replaceAll('_', '-')}`}>
                           {regKey}
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>{rData.trades}</td>
-                        <td style={{ padding: '0.75rem 1rem', color: rData.win_rate >= 50 ? '#10b981' : '#f59e0b' }}>
-                          {rData.win_rate}%
+                        <td>
+                          {rData.win_rate}% · {rData.win_rate >= 50 ? 'half or more' : 'less than half'}
                         </td>
-                        <td style={{ padding: '0.75rem 1rem', color: rData.total_return_pct >= 0 ? '#10b981' : '#f43f5e' }}>
-                          {rData.total_return_pct > 0 ? '+' : ''}{rData.total_return_pct}%
+                        <td className={rData.total_return_pct >= 0 ? 'positive' : 'negative'}>
+                          {rData.total_return_pct >= 0 ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs(Number(rData.total_return_pct) || 0)}%
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>{rData.profit_factor}</td>
                       </tr>
@@ -460,7 +456,7 @@ export default function BacktestLab() {
               <p className="trade-regime-note">Use these filters to compare winning and losing trades in rising or falling markets. Select a share to see its price changes by day.</p>
 
               <div style={{ overflowX: 'auto', maxHeight: '420px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
+                <table className="trade-table" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#080d18', zIndex: 5 }}>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-dim)', textAlign: 'left' }}>
                       <th style={{ padding: '0.65rem 0.75rem' }}>SYMBOL</th>
@@ -500,19 +496,12 @@ export default function BacktestLab() {
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.exit_date}</td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>₹{t.entry_price}</td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>₹{t.exit_price}</td>
-                          <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700, color: isWin ? '#10b981' : '#f43f5e' }}>
-                            {t.pnl_pct > 0 ? '+' : ''}{t.pnl_pct}%
+                          <td className={isWin ? 'positive' : 'negative'} style={{ padding: '0.65rem 0.75rem', fontWeight: 700 }}>
+                            {isWin ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs(Number(t.pnl_pct) || 0)}%
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>{t.holding_days}d</td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>
-                            <span style={{
-                              fontSize: '0.65rem',
-                              padding: '0.15rem 0.45rem',
-                              borderRadius: '4px',
-                              background: isWin ? 'rgba(16,185,129,0.15)' : 'rgba(244,63,94,0.15)',
-                              color: isWin ? '#10b981' : '#f43f5e',
-                              border: `1px solid ${isWin ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`
-                            }}>
+                            <span className={`trade-exit-reason ${isWin ? 'win' : 'loss'}`}>
                               {({ TARGET_HIT: 'Target price reached', STOP_LOSS: 'Loss limit reached', TIME_EXIT: 'Time limit ended', END_OF_DATA: 'Price history ended' }[t.exit_reason] || t.exit_reason?.replace(/_/g, ' ').toLowerCase())}
                             </span>
                           </td>
