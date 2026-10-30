@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 
-export function CustomCursor() {
+export function CustomCursor({ enabled = false }) {
+  const effectsEnabled = enabled && typeof document !== 'undefined' && document.documentElement.dataset.decorativeMotion === 'on';
   const [pos, setPos] = useState({ x: -100, y: -100 });
   const [trailerPos, setTrailerPos] = useState({ x: -100, y: -100 });
   const [hovered, setHovered] = useState(false);
   const [isClicking, setIsClicking] = useState(false);
 
   useEffect(() => {
+    if (!effectsEnabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     const handleMove = (e) => {
       setPos({ x: e.clientX, y: e.clientY });
     };
@@ -47,7 +49,9 @@ export function CustomCursor() {
       window.removeEventListener('mouseup', handleMouseUp);
       cancelAnimationFrame(animId);
     };
-  }, [pos.x, pos.y]);
+  }, [pos.x, pos.y, effectsEnabled]);
+
+  if (!effectsEnabled || (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return null;
 
   return (
     <>
@@ -91,7 +95,8 @@ export function CustomCursor() {
 }
 
 // 3D Tilt Card wrapper
-export function TiltCard({ children, className, style, onClick }) {
+export function TiltCard({ children, className, style, onClick, enabled = false }) {
+  const effectsEnabled = enabled && typeof document !== 'undefined' && document.documentElement.dataset.decorativeMotion === 'on' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [transform, setTransform] = useState('');
   const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
 
@@ -122,12 +127,12 @@ export function TiltCard({ children, className, style, onClick }) {
     <div 
       className={`tilt-interactive ${className || ''}`}
       onClick={onClick}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseMove={effectsEnabled ? handleMouseMove : undefined}
+      onMouseLeave={effectsEnabled ? handleMouseLeave : undefined}
       style={{
         ...style,
-        transform: transform,
-        transition: 'transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease',
+        transform: effectsEnabled ? transform : undefined,
+        transition: effectsEnabled ? 'transform 0.18s ease' : 'none',
         transformStyle: 'preserve-3d',
         position: 'relative',
         overflow: 'hidden'
@@ -138,7 +143,7 @@ export function TiltCard({ children, className, style, onClick }) {
         style={{
           position: 'absolute',
           inset: 0,
-          background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,${glare.opacity}) 0%, transparent 55%)`,
+          background: effectsEnabled ? `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,${glare.opacity}) 0%, transparent 55%)` : 'none',
           pointerEvents: 'none',
           transition: 'opacity 0.2s ease',
           zIndex: 10

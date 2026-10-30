@@ -14,7 +14,20 @@ import TradingStrategiesView from './components/TradingStrategiesView';
 import StockAnalysisView from './components/StockAnalysisView';
 import SignalHistoryView from './components/SignalHistoryView';
 import InstitutionalFlowView from './components/InstitutionalFlowView';
+import AppearanceControls from './components/AppearanceControls';
+import ValueBadge from './components/ValueBadge';
 import { playTone, setSoundEnabled } from './utils/soundFx';
+
+function readAppearancePreference(key, fallback) {
+  try { return window.localStorage.getItem(key) ?? fallback; }
+  catch { return fallback; }
+}
+
+function regimeMarker(regime) {
+  const marks = { EXTREME_PANIC_OVERSOLD: '‼', BEARISH_CORRECTION: '▼', STRONG_BULL: '▲', PULLBACK_BULL: '↗', SIDEWAYS_CHOPPY: '↔', TRANSITION: '◇' };
+  return marks[regime] || '◇';
+}
+function regimeClass(regime) { return String(regime || '').toLowerCase().replaceAll('_', '-'); }
 
 const navigation = [
   { id: 'screener', label: 'Overview', icon: LayoutDashboard, section: 'WORKSPACE' },
@@ -365,14 +378,14 @@ function PortfolioView({ data, loading, saving, storageStatus, saveError, error,
     {loading && !data ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Reviewing your shares</strong><span>Calculating daily trend checks…</span></div>
       : holdings.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Wallet size={19} /></div><strong>Add your first stock</strong><span>Enter its NSE symbol, quantity and average buy price above. Your list is saved with this app.</span></div>
         : <>
-          <div className="portfolio-summary"><article><span>SHARES HELD</span><strong>{holdings.length}</strong></article><article><span>MONEY INVESTED · EST.</span><strong>{formatPrice(totalInvestment)}</strong></article><article><span>VALUE TODAY · EST.</span><strong>{formatPrice(totalValue)}</strong></article><article><span>GAIN OR LOSS · EST.</span><strong className={totalPnl >= 0 ? 'positive' : 'negative'}>{formatPrice(totalPnl)}</strong></article></div>
+          <div className="portfolio-summary"><article><span>SHARES HELD</span><strong>{holdings.length}</strong></article><article><span>MONEY INVESTED · EST.</span><strong>{formatPrice(totalInvestment)}</strong></article><article><span>VALUE TODAY · EST.</span><strong>{formatPrice(totalValue)}</strong></article><article><span>GAIN OR LOSS · EST.</span><ValueBadge positive={totalPnl >= 0}>{formatPrice(Math.abs(totalPnl))}</ValueBadge></article></div>
           <div className="portfolio-list">{holdings.map((item, index) => {
             const analysis = item.analysis || {};
             const actionLabel = analysis.action === 'REVIEW_SELL' ? 'Review this share' : analysis.action === 'HOLD' ? 'No exit warning' : 'Not enough information';
             const actionClass = analysis.action === 'REVIEW_SELL' ? 'review-sell' : analysis.action === 'HOLD' ? 'hold' : 'unknown';
             return <article className="portfolio-card" key={`${item.display_symbol || item.symbol}-${index}`}>
               <div className="portfolio-card-heading"><div><span className="instrument-token">{(item.display_symbol || item.symbol || '?').slice(0, 1)}</span><div><strong>{item.display_symbol || item.symbol}</strong><small>Manual entry · Qty {item.quantity ?? '—'}</small></div></div><div className="portfolio-card-controls"><span className={`portfolio-action ${actionClass}`}>{actionLabel}</span><button type="button" disabled={saving} onClick={() => startEdit(item)}>Edit</button><button type="button" disabled={saving} onClick={() => onDeleteHolding(item.symbol)}>Remove</button></div></div>
-              <div className="portfolio-values"><div><span>PRICE TODAY</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVERAGE BUY PRICE</span><b>{formatPrice(item.average_price)}</b></div><div><span>SHARES</span><b>{item.quantity}</b></div><div><span>MONEY INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>VALUE TODAY · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>GAIN OR LOSS · EST.</span><b className={Number(item.unrealized_pnl) >= 0 ? 'positive' : 'negative'}>{formatPrice(item.unrealized_pnl)}</b></div></div>
+              <div className="portfolio-values"><div><span>PRICE TODAY</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVERAGE BUY PRICE</span><b>{formatPrice(item.average_price)}</b></div><div><span>SHARES</span><b>{item.quantity}</b></div><div><span>MONEY INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>VALUE TODAY · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>GAIN OR LOSS · EST.</span><ValueBadge positive={Number(item.unrealized_pnl) >= 0}>{formatPrice(Math.abs(Number(item.unrealized_pnl) || 0))}</ValueBadge></div></div>
               {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>20-day average price <b>{formatPrice(analysis.ema20)}</b></span><span>50-day average price <b>{formatPrice(analysis.ema50)}</b></span><span>Recent price strength <b>{analysis.rsi14 ?? '—'}</b></span><span>Price change in 20 days <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{analysis.return20_pct == null ? '—' : `${analysis.return20_pct}%`}</b></span><small>Price date: {analysis.as_of || '—'}</small></div>}
               <ul className="portfolio-reasons">{(analysis.reasons || []).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul>
               <div className={`portfolio-verdict ${actionClass}`}><div><span>SIMPLE TAKEAWAY</span><strong>{actionLabel}</strong></div><p>{analysis.beginner_verdict || 'Is review me agla kadam samajhne ke liye abhi kaafi jaankari nahi hai.'}</p></div>
@@ -384,6 +397,10 @@ function PortfolioView({ data, loading, saving, storageStatus, saveError, error,
 }
 
 export default function App() {
+  const [theme, setTheme] = useState(() => readAppearancePreference('marketvoice-theme', 'dark'));
+  const [dim, setDim] = useState(() => readAppearancePreference('marketvoice-dim', 'normal'));
+  const [grayscale, setGrayscale] = useState(() => readAppearancePreference('marketvoice-grayscale', 'false') === 'true');
+  const [decorativeMotion, setDecorativeMotion] = useState(() => readAppearancePreference('marketvoice-motion', 'false') === 'true');
   const [activeTab, setActiveTab] = useState('screener');
   const [regimeData, setRegimeData] = useState(null);
   const [liveStatus, setLiveStatus] = useState(null);
@@ -414,6 +431,22 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.dim = dim;
+    root.dataset.grayscale = grayscale ? 'on' : 'off';
+    root.dataset.decorativeMotion = decorativeMotion ? 'on' : 'off';
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.content = theme === 'light' ? '#ffffff' : theme === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches ? '#ffffff' : '#191919';
+    try {
+      window.localStorage.setItem('marketvoice-theme', theme);
+      window.localStorage.setItem('marketvoice-dim', dim);
+      window.localStorage.setItem('marketvoice-grayscale', String(grayscale));
+      window.localStorage.setItem('marketvoice-motion', String(decorativeMotion));
+    } catch { /* Preferences remain usable for this session when storage is unavailable. */ }
+  }, [theme, dim, grayscale, decorativeMotion]);
 
   useEffect(() => {
     let active = true;
@@ -730,6 +763,7 @@ export default function App() {
       <div className="rail-spacer" />
       <button className="side-nav-item support-item" onClick={() => showToast('Help center coming soon', 'info')}><CircleHelp size={18} /><span>Help & support</span></button>
       <button className="profile-button" aria-label="Account settings" onClick={() => showToast('Account settings coming soon', 'info')}><span className="avatar">A</span><span className="profile-copy"><b>Analyst</b><small>Personal workspace</small></span><MoreHorizontal size={17} /></button>
+      <AppearanceControls compact theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} />
     </aside>
 
     <div className="workspace">
@@ -745,6 +779,7 @@ export default function App() {
           <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
           <button className="icon-button" title={soundOn ? 'Mute sound' : 'Enable sound'} onClick={toggleSound}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
           <button className="icon-button notification-button" title="Notifications" onClick={() => showToast('You’re all caught up', 'info')}><Bell size={17} /><span /></button>
+          <AppearanceControls theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} />
           {activeTab === 'screener' && <button className="scan-button" onClick={() => runScreener(true)} disabled={loading}>{loading ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{loading ? 'Scanning' : 'Run scan'}</button>}
         </div>
       </header>
@@ -763,7 +798,7 @@ export default function App() {
               <div className="hero-market-main">
                 <div className="hero-market-price-row">
                   <strong>{displayedNiftyPrice != null ? formatPrice(displayedNiftyPrice) : 'Waiting for quote'}</strong>
-                  {isMarketOpen && hasLiveQuote && liveChange != null && <span className={`hero-market-change ${liveChange >= 0 ? 'positive' : 'negative'}`}>{liveChange >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}{liveChange > 0 ? '+' : ''}{liveChange}%</span>}
+                  {isMarketOpen && hasLiveQuote && liveChange != null && <ValueBadge positive={liveChange >= 0} unit="%" context="Nifty change today" className="hero-market-change">{Math.abs(Number(liveChange))}</ValueBadge>}
                 </div>
                 <span className="hero-market-subtitle">{!isMarketOpen ? iiflQuoteIsToday ? `Market closed · IIFL last quote ${liveQuoteTime || ''} IST` : 'Market closed · latest daily close from Yahoo Finance' : liveQuoteError || liveStatus?.stream_error ? `${liveQuoteError || liveStatus.stream_error}${hasLiveQuote ? ` · last tick ${liveQuoteTime || ''} IST` : ''}` : hasLiveQuote ? `${quoteFresh ? 'NIFTY 50 IIFL live spot' : 'IIFL quote delayed'} · tick ${liveQuoteTime || 'time unavailable'} IST` : liveStatus?.authenticated ? 'Waiting for IIFL quote · showing latest Yahoo daily bar' : 'Yahoo Finance daily bar · connect IIFL for live spot data'}</span>
                 {isMarketOpen && hasLiveQuote && sessionRangePosition != null ? <div className="hero-session-range">
@@ -773,7 +808,7 @@ export default function App() {
                 </div> : <div className="hero-range-placeholder">{!isMarketOpen ? 'Intraday range hidden while market is closed' : hasLiveQuote ? 'Session high/low not supplied by the feed' : 'Live price range appears after IIFL quote connects'}</div>}
               </div>
             <div className="hero-regime-summary">
-                <div><small><i style={{ background: regimeData?.color || '#d9f2a2' }} />MARKET MOOD</small><strong>{regimeData?.title || 'Checking the market'}</strong></div>
+                <div><small>Market mood</small><strong className={`regime-badge state-${regimeClass(regimeData?.regime || regimeData?.confirmed_regime)}`}><span aria-hidden="true">{regimeMarker(regimeData?.regime || regimeData?.confirmed_regime)}</span>{regimeData?.title || 'Checking the market'}</strong></div>
                 <span title="Based on recent daily prices for a sample of shares">{metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}% of tracked shares are above their 50-day average` : 'Share trend data unavailable'}<br />{metrics.rsi_14 != null ? `Nifty price strength ${metrics.rsi_14}/100` : 'Nifty price strength —'}</span>
               </div>
             </button>
@@ -783,9 +818,9 @@ export default function App() {
             <MetricCard label="NIFTY 50" value={displayedNiftyPrice != null ? Number(displayedNiftyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'} change={isMarketOpen && liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : 'Day-end close'} positive={isMarketOpen && liveQuote ? liveChange >= 0 : null} icon={LineChart} note={isMarketOpen ? liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : 'Waiting for IIFL live quote' : iiflQuoteIsToday ? `IIFL last quote · ${liveQuoteTime || ''} IST` : 'Latest daily close · Yahoo Finance'} tone="lilac" />
             <MetricCard label="Tracked shares above average" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'More than half' : 'Fewer than half'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="Compared with their 50-day average" tone="mint" />
             <MetricCard label="Shares to review" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} fit the market mood`} positive={optimalCount > 0} icon={Target} note={`Typical possible gain vs loss: 1:${avgRR}`} tone="peach" />
-            <article className="regime-card" onClick={() => selectTab('regime')} role="button" tabIndex="0" onKeyDown={event => event.key === 'Enter' && selectTab('regime')}>
-              <div className="regime-orbit"><span /><i /><b /></div><div className="regime-copy"><span className="regime-label">MARKET MOOD</span><strong>{regimeData?.title || 'Checking the market'}</strong><small><span className="regime-dot" style={{ backgroundColor: regimeData?.color || '#aaa' }} />{regimeData?.recommended_action || 'Market summary updates with each scan'}</small></div><ArrowUpRight size={16} className="regime-link" />
-            </article>
+            <button className="regime-card" onClick={() => selectTab('regime')}>
+              <span className={`regime-badge state-${regimeClass(regimeData?.regime || regimeData?.confirmed_regime)}`}><span aria-hidden="true">{regimeMarker(regimeData?.regime || regimeData?.confirmed_regime)}</span>{regimeData?.title || 'Checking the market'}</span><span className="regime-copy"><span className="regime-label">Market mood</span><span>{regimeData?.recommended_action || 'Market summary updates with each scan'}</span></span><ArrowUpRight size={18} className="regime-link" aria-hidden="true" />
+            </button>
           </section>
 
           <section className="insight-banner">

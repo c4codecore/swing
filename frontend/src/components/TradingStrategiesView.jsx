@@ -205,7 +205,7 @@ function IntradayScreenerView({ connected, onConnect }) {
                   </td>
                   <td><span className="strategy-tag">{STRATEGY_ICONS[signal.strategy] || '📊'} {STRATEGY_LABELS[signal.strategy] || signal.strategy_title}</span></td>
                   <td><span className={`direction-badge ${isBullish ? 'bullish' : 'bearish'}`}>{isBullish ? '▲ BULL' : '▼ BEAR'}</span></td>
-                  <td><span className={`move-value ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{positive ? '+' : ''}{signal.change_pct}%</span></td>
+                  <td><span className={`move-value ${positive ? 'positive' : 'negative'}`}><span aria-hidden="true">{positive ? '▲' : '▼'}</span>{positive ? '+' : '−'}{Math.abs(Number(signal.change_pct))}% <strong>{positive ? 'GAIN' : 'LOSS'}</strong></span></td>
                   <td className="numeric-cell">{price(signal.entry_price)}</td>
                   <td className="numeric-cell stop-value">{price(signal.stop_loss)}</td>
                   <td className="numeric-cell target-value">{price(signal.target_1)}</td>

@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-export default function ThreeCanvas({ regime, isScanning }) {
+export default function ThreeCanvas({ regime, isScanning, enabled = false }) {
   const mountRef = useRef(null);
 
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!mount || !enabled || document.documentElement.dataset.decorativeMotion !== 'on' || window.innerWidth < 768 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     // Scene, Camera, Renderer
     const scene = new THREE.Scene();
@@ -191,7 +191,9 @@ export default function ThreeCanvas({ regime, isScanning }) {
       texture.dispose();
       renderer.dispose();
     };
-  }, [regime, isScanning]);
+  }, [regime, isScanning, enabled]);
+
+  if (!enabled || (typeof window !== 'undefined' && (document.documentElement.dataset.decorativeMotion !== 'on' || window.innerWidth < 768 || window.matchMedia('(prefers-reduced-motion: reduce)').matches))) return null;
 
   return (
     <div 
