@@ -1510,29 +1510,57 @@ body { background: radial-gradient(ellipse at 78% -18%, rgba(176,170,242,.23), t
 }
 
 .intraday-card-reasons {
-  margin: 11px 0;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .025);
-  border: 1px solid rgba(235, 228, 255, .06);
+  margin: 12px 0 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffff !important;
+  border: 1px solid rgba(121, 88, 220, 0.25) !important;
+  box-shadow: 0 3px 10px rgba(45, 35, 65, 0.05) !important;
 }
 
 .intraday-card-reasons strong {
-  display: block;
-  margin-bottom: 5px;
-  color: #a49eaf;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: #4b309e !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
 }
 
 .intraday-card-reasons ul {
-  margin: 0;
-  padding-left: 15px;
-  color: #cfcad8;
-  font-size: 10px;
-  line-height: 1.5;
+  margin: 0 !important;
+  padding-left: 18px !important;
+  color: #1f1b2b !important;
+  font-size: 12.5px !important;
+  line-height: 1.65 !important;
+}
+
+.intraday-card-reasons li {
+  margin-bottom: 6px !important;
+  color: #1f1b2b !important;
+  font-weight: 600 !important;
+}
+
+.intraday-card-reasons li:last-child {
+  margin-bottom: 0 !important;
+}
+
+.intraday-card-reasons li::marker {
+  color: #7958dc !important;
+  font-size: 13px !important;
+}
+
+.card-prices.card-prices-4 {
+  grid-template-columns: repeat(4, 1fr) !important;
+}
+
+@media (max-width: 640px) {
+  .card-prices.card-prices-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 .intraday-nifty-section {
@@ -1558,4 +1586,854 @@ body { background: radial-gradient(ellipse at 78% -18%, rgba(176,170,242,.23), t
   min-height: 120px;
   padding: 20px;
 }
+
+/* ==========================================================================
+   Complete Mobile-Friendly Responsive Architecture (Phones & Tablets)
+   ========================================================================== */
+
+/* Hidden elements on desktop */
+.mobile-menu-toggle {
+  display: none;
+}
+.mobile-drawer-close {
+  display: none;
+}
+.mobile-drawer-backdrop {
+  display: none;
+}
+.mobile-bottom-nav {
+  display: none;
+}
+.side-rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* Prevent horizontal screen jiggle */
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .spatial-app {
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Full-width Workspace */
+  .workspace {
+    margin-left: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 100vh;
+  }
+
+  /* Side-Rail as Sliding Drawer */
+  .side-rail {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: 290px !important;
+    max-width: 84vw !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    z-index: 200 !important;
+    padding: 18px 16px 24px !important;
+    transform: translateX(-105%) !important;
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1) !important;
+    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.38) !important;
+    background: #e8e6ee !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-right: 1px solid rgba(75, 67, 92, 0.12) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .side-rail.mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  .side-rail-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding-bottom: 14px !important;
+  }
+
+  .mobile-drawer-close {
+    display: grid !important;
+    place-items: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    border: 1px solid rgba(75, 67, 92, 0.12) !important;
+    border-radius: 8px !important;
+    background: #eceaf2 !important;
+    color: #403b4b !important;
+    cursor: pointer !important;
+  }
+
+  .brand-mark {
+    padding: 0 !important;
+  }
+
+  .side-nav {
+    width: 100% !important;
+    gap: 5px !important;
+  }
+
+  .side-nav-item {
+    width: 100% !important;
+    min-height: 42px !important;
+    justify-content: flex-start !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    gap: 12px !important;
+    color: #55515f !important;
+    border-radius: 10px !important;
+  }
+
+  .side-nav-item span {
+    display: inline !important;
+  }
+
+  .nav-group-label {
+    display: block !important;
+    margin: 14px 10px 6px !important;
+    font-size: 10px !important;
+    color: #8c8698 !important;
+  }
+
+  .profile-button {
+    width: 100% !important;
+    min-height: 48px !important;
+    padding: 8px 10px !important;
+    justify-content: flex-start !important;
+  }
+
+  .profile-copy {
+    display: flex !important;
+  }
+
+  .profile-button > svg {
+    display: block !important;
+  }
+
+  /* Drawer Backdrop */
+  .mobile-drawer-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 190 !important;
+    background: rgba(18, 16, 26, 0.6) !important;
+    backdrop-filter: blur(4px) !important;
+    animation: fadeIn 0.2s ease-out !important;
+  }
+
+  /* Compact Mobile Topbar */
+  .topbar {
+    height: 56px !important;
+    padding: 0 12px !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: rgba(232, 230, 238, 0.94) !important;
+    backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid rgba(75, 67, 92, 0.08) !important;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .mobile-menu-toggle {
+    display: grid !important;
+    place-items: center !important;
+    width: 35px !important;
+    height: 35px !important;
+    border-radius: 9px !important;
+    border: 1px solid rgba(75, 67, 92, 0.12) !important;
+    background: #eceaf2 !important;
+    color: #403b4b !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: background 0.18s;
+  }
+
+  .mobile-menu-toggle:active {
+    background: #dfdbe8 !important;
+  }
+
+  .breadcrumb {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    font-size: 11px !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .crumb-app {
+    display: none;
+  }
+
+  .crumb-slash {
+    display: none;
+  }
+
+  .breadcrumb strong {
+    font-size: 14px !important;
+    color: #393545 !important;
+  }
+
+  .topbar-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .session-pill {
+    display: none !important;
+  }
+
+  .iifl-feed-button {
+    height: 30px !important;
+    padding: 0 8px !important;
+    font-size: 9px !important;
+    gap: 4px !important;
+    border-radius: 8px !important;
+  }
+
+  .icon-button {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 8px !important;
+  }
+
+  .scan-button {
+    height: 30px !important;
+    padding: 0 9px !important;
+    font-size: 10px !important;
+    gap: 5px !important;
+    border-radius: 8px !important;
+  }
+
+  /* Page Content with Bottom Navigation Clearance */
+  .page-content {
+    padding: 14px 12px 84px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Mobile Bottom Navigation Bar */
+  .mobile-bottom-nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 56px !important;
+    z-index: 100 !important;
+    background: rgba(232, 230, 238, 0.95) !important;
+    backdrop-filter: blur(24px) !important;
+    border-top: 1px solid rgba(75, 67, 92, 0.12) !important;
+    box-shadow: 0 -3px 16px rgba(45, 35, 65, 0.08) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .bottom-nav-item {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: #777281 !important;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    padding: 4px 0 !important;
+    transition: color 0.18s ease !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .bottom-nav-item.active {
+    color: #7958dc !important;
+  }
+
+  .bottom-nav-dot {
+    position: absolute !important;
+    top: 5px !important;
+    right: calc(50% - 13px) !important;
+    width: 5px !important;
+    height: 5px !important;
+    border-radius: 50% !important;
+    background: #7958dc !important;
+  }
+
+  /* Welcome Hero Row */
+  .welcome-row.feature-hero {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+    margin: 2px 0 16px !important;
+  }
+
+  .hero-copy {
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(28px, 8vw, 36px) !important;
+    line-height: 1.15 !important;
+    margin: 8px 0 4px !important;
+  }
+
+  .welcome-subtitle {
+    font-size: 11px !important;
+    max-width: 100% !important;
+  }
+
+  .hero-feature-card {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .hero-market-price-row {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .hero-market-price-row strong {
+    font-size: 28px !important;
+  }
+
+  .hero-market-change {
+    font-size: 10px !important;
+    padding: 4px 7px !important;
+  }
+
+  .hero-regime-summary {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding-top: 10px !important;
+  }
+
+  .hero-regime-summary > span {
+    text-align: left !important;
+  }
+
+  /* Market Metric Strip */
+  .market-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .metric-card, .regime-card {
+    height: auto !important;
+    min-height: 100px !important;
+    padding: 12px 10px !important;
+    border-radius: 13px !important;
+  }
+
+  .metric-value {
+    font-size: 19px !important;
+    margin: 4px 0 !important;
+  }
+
+  .metric-top span {
+    font-size: 9px !important;
+  }
+
+  .metric-bottom {
+    font-size: 8px !important;
+    gap: 3px !important;
+  }
+
+  .sparkline {
+    display: none !important;
+  }
+
+  /* Insight Banner */
+  .insight-banner {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 12px !important;
+    border-radius: 13px !important;
+    min-height: auto !important;
+  }
+
+  .banner-copy strong {
+    white-space: normal !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+
+  .banner-copy small {
+    font-size: 9px !important;
+  }
+
+  .banner-action {
+    position: static !important;
+    align-self: flex-start !important;
+    margin-top: 4px !important;
+    padding: 6px 10px !important;
+  }
+
+  /* Setup Search & Controls */
+  .setups-section {
+    margin-top: 20px !important;
+  }
+
+  .section-heading {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .section-heading h2 {
+    font-size: 18px !important;
+  }
+
+  .setup-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .search-box {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 35px !important;
+  }
+
+  .strategy-select {
+    width: 100% !important;
+    max-width: none !important;
+    height: 35px !important;
+  }
+
+  .view-toggle {
+    align-self: flex-end !important;
+  }
+
+  .history-horizon-bar {
+    font-size: 9px !important;
+    gap: 6px !important;
+  }
+
+  .filter-row {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 5px !important;
+    gap: 5px !important;
+  }
+
+  .filter-pill {
+    flex: 0 0 auto !important;
+    padding: 0 8px !important;
+    height: 26px !important;
+    font-size: 8px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Setup Cards & Grid */
+  .setup-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .setup-card {
+    padding: 13px !important;
+    border-radius: 14px !important;
+  }
+
+  .setup-card h3 {
+    font-size: 16px !important;
+    margin: 8px 0 2px !important;
+  }
+
+  .card-prices {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+    padding: 9px 6px !important;
+    margin: 12px 0 10px !important;
+  }
+
+  .card-prices span {
+    font-size: 7px !important;
+  }
+
+  .card-prices b {
+    font-size: 11px !important;
+  }
+
+  .table-shell {
+    border-radius: 13px !important;
+  }
+
+  .table-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Intraday Screener Mobile Styles */
+  .intraday-strat-dist {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 6px !important;
+    gap: 6px !important;
+    margin: 12px 0 !important;
+  }
+
+  .intraday-strat-chip {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    min-height: 30px !important;
+    padding: 0 9px !important;
+    font-size: 10px !important;
+  }
+
+  .intraday-filter-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 7px !important;
+    margin: 8px 0 14px !important;
+  }
+
+  .intraday-filter-row .search-box {
+    width: 100% !important;
+  }
+
+  .intraday-filter-row select {
+    width: 100% !important;
+    height: 35px !important;
+  }
+
+  .intraday-filter-row .view-toggle {
+    align-self: flex-end !important;
+  }
+
+  .trading-signal-banner {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: 13px !important;
+    border-radius: 13px !important;
+  }
+
+  .trading-signal-copy {
+    width: 100% !important;
+  }
+
+  .trading-spot {
+    text-align: left !important;
+    padding-top: 8px !important;
+    border-top: 1px solid rgba(75, 67, 92, 0.08) !important;
+  }
+
+  .trading-metrics-grid, .intraday-plan-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 7px !important;
+  }
+
+  .trading-metrics-grid article, .intraday-plan-grid article {
+    padding: 10px !important;
+    border-radius: 11px !important;
+  }
+
+  .trading-metrics-grid article span, .intraday-plan-grid article span {
+    font-size: 8px !important;
+  }
+
+  .trading-metrics-grid article strong, .intraday-plan-grid article strong {
+    font-size: 13px !important;
+  }
+
+  .options-spread-summary {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 7px !important;
+  }
+
+  .options-payoff-row {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  /* Portfolio Mobile Styles */
+  .portfolio-actions {
+    width: 100% !important;
+    justify-content: space-between !important;
+    margin-top: 6px !important;
+  }
+
+  .portfolio-entry {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 12px !important;
+    border-radius: 13px !important;
+  }
+
+  .portfolio-entry-actions {
+    width: 100% !important;
+    display: flex !important;
+    gap: 8px !important;
+  }
+
+  .portfolio-entry-actions .primary-button {
+    flex: 1 !important;
+    min-height: 38px !important;
+    width: 100% !important;
+  }
+
+  .portfolio-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .portfolio-summary article {
+    padding: 10px 12px !important;
+    min-height: 65px !important;
+  }
+
+  .portfolio-summary article span {
+    font-size: 9px !important;
+  }
+
+  .portfolio-summary article strong {
+    font-size: 15px !important;
+  }
+
+  .portfolio-card {
+    padding: 14px !important;
+    border-radius: 13px !important;
+  }
+
+  .portfolio-card-heading {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 9px !important;
+  }
+
+  .portfolio-card-controls {
+    width: 100% !important;
+    justify-content: flex-end !important;
+  }
+
+  .portfolio-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px 12px !important;
+    margin: 12px 0 !important;
+  }
+
+  .portfolio-values b {
+    font-size: 13px !important;
+  }
+
+  .portfolio-indicators {
+    font-size: 10px !important;
+    gap: 6px 12px !important;
+    padding: 10px 0 !important;
+  }
+
+  .portfolio-reasons {
+    font-size: 11px !important;
+    padding-left: 16px !important;
+  }
+
+  .portfolio-verdict {
+    padding: 12px !important;
+    margin-top: 12px !important;
+  }
+
+  .portfolio-verdict p {
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  /* History Screen Mobile Styles */
+  .history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .history-summary article {
+    min-height: 60px !important;
+    padding: 9px 11px !important;
+  }
+
+  .history-summary article strong {
+    font-size: 16px !important;
+  }
+
+  .history-filters {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .history-search {
+    width: 100% !important;
+  }
+
+  .history-filters select {
+    width: 100% !important;
+  }
+
+  /* Flow Watch Screen Mobile Styles */
+  .flow-controls {
+    width: 100% !important;
+    justify-content: space-between !important;
+    margin-top: 6px !important;
+  }
+
+  .flow-method-strip {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  .flow-panels {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .flow-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Stock Analysis Mobile Styles */
+  .stock-analysis-search-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .stock-analysis-overview {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .stock-analysis-grid, .stock-analysis-fundamentals {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  /* Regime Mood Mobile Styles */
+  .module-page .regime-summary {
+    padding: 14px !important;
+  }
+
+  .module-page .regime-summary h2 {
+    font-size: 20px !important;
+  }
+
+  .module-page .exposure-card {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .module-page .phase-roadmap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* Interactive Modal Mobile Styles */
+  .spatial-modal-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+
+  .spatial-modal {
+    width: 100% !important;
+    max-height: 92vh !important;
+    padding: 16px 13px !important;
+    border-radius: 18px 18px 0 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .modal-topline h2 {
+    font-size: 18px !important;
+  }
+
+  .modal-metrics {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 7px !important;
+  }
+
+  .modal-metrics > div {
+    padding: 9px !important;
+  }
+
+  .setup-rationale ul {
+    grid-template-columns: 1fr !important;
+  }
+
+  .research-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+}
+
+/* Extra small mobile screens (iPhone SE, Galaxy S compact <= 400px) */
+@media (max-width: 400px) {
+  .hero-market-price-row strong {
+    font-size: 24px !important;
+  }
+
+  .market-strip {
+    grid-template-columns: 1fr !important;
+  }
+
+  .portfolio-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .portfolio-values {
+    grid-template-columns: 1fr !important;
+  }
+
+  .history-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .stock-analysis-grid, .stock-analysis-fundamentals {
+    grid-template-columns: 1fr !important;
+  }
+
+  .research-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 

@@ -228,7 +228,7 @@ function IntradayScreenerView({ connected, onConnect }) {
             </div>
             <h3>{signal.symbol}</h3>
             <p className="setup-strategy">{STRATEGY_ICONS[signal.strategy]} {STRATEGY_LABELS[signal.strategy] || signal.strategy_title}</p>
-            <div className="card-prices">
+            <div className="card-prices card-prices-4">
               <div><span>ENTRY</span><b>{price(signal.entry_price)}</b></div>
               <div><span>STOP LOSS</span><b className="stop-value">{price(signal.stop_loss)}</b></div>
               <div><span>TARGET 1</span><b className="target-value">{price(signal.target_1)}</b></div>

@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, AudioLines, BarChart3, Bell, BookOpen,
   CandlestickChart, Check, ChevronDown, CircleHelp, Compass, Copy, LayoutDashboard,
   History, LineChart, MoreHorizontal, Search, ShieldCheck,
-  Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio
+  Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio, Menu
 } from 'lucide-react';
 import appLogo from './assets/logo.png';
 import StockChart from './components/StockChart';
@@ -412,6 +412,7 @@ export default function App() {
   const [portfolioStorageStatus, setPortfolioStorageStatus] = useState('loading');
   const [portfolioSaveError, setPortfolioSaveError] = useState(null);
   const [currentTime, setCurrentTime] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef(null);
 
   useEffect(() => {
@@ -688,7 +689,12 @@ export default function App() {
   const displayedNiftyPrice = isMarketOpen && hasLiveQuote ? liveQuote.price : iiflQuoteIsToday ? liveQuote.price : metrics.nifty_close ?? liveQuote?.price;
   const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : 'Test a strategy';
 
-  const selectTab = id => { setActiveTab(id); playTone('click'); };
+  const selectTab = id => {
+    setActiveTab(id);
+    setMobileMenuOpen(false);
+    playTone('click');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const handleCopySetup = signal => {
     const text = `SWING SETUP · ${signal.symbol}\nStatus: ${signal.trade_status || 'Review setup'}\nEntry: ₹${signal.entry_price}\nStop: ₹${signal.stop_loss}\nTarget 1: ₹${signal.target_1}\nTarget 2: ₹${signal.target_2}\nRisk/reward: 1:${signal.risk_reward}\nStrategy: ${signal.strategy_title}`;
     navigator.clipboard?.writeText(text);
@@ -700,8 +706,13 @@ export default function App() {
 
   return <div className="spatial-app">
     {toast && <CyberToast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    <aside className="side-rail">
-      <button className="brand-mark" aria-label="MarketVoice home" onClick={() => selectTab('screener')}><span className="brand-orb"><img className="brand-logo" src={appLogo} alt="" /></span></button>
+    {mobileMenuOpen && <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)} aria-hidden="true" />}
+    
+    <aside className={`side-rail ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+      <div className="side-rail-header">
+        <button className="brand-mark" aria-label="MarketVoice home" onClick={() => selectTab('screener')}><span className="brand-orb"><img className="brand-logo" src={appLogo} alt="" /></span></button>
+        <button className="icon-button mobile-drawer-close" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
+      </div>
       <div className="rail-divider" />
       <div className="nav-group-label">WORKSPACE</div>
       <nav className="side-nav" aria-label="Primary navigation">
@@ -723,7 +734,12 @@ export default function App() {
 
     <div className="workspace">
       <header className="topbar">
-        <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{marketName}</strong></div>
+        <div className="topbar-left">
+          <button className="mobile-menu-toggle" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation menu">
+            <Menu size={20} />
+          </button>
+          <div className="breadcrumb"><span className="crumb-app">MarketVoice</span><span className="crumb-slash">/</span><strong>{marketName}</strong></div>
+        </div>
         <div className="topbar-actions">
           <div className={`session-pill ${isMarketOpen ? 'session-open' : ''}`}><span className="session-indicator" /><span>{isMarketOpen ? 'NSE market open' : 'Market closed'}</span><i />{currentTime} IST</div>
           <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
@@ -795,6 +811,30 @@ export default function App() {
         {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market mood</h1><p>See whether the overall market looks strong, weak or mixed.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
         {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">LEARN FROM PAST PRICES</div><h1>Test a strategy</h1><p>See how a share-picking idea would have worked on older prices.</p></div><span className="research-badge"><BookOpen size={14} /> Learning tool</span></div><BacktestLab /></section>}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button className={`bottom-nav-item ${activeTab === 'screener' ? 'active' : ''}`} onClick={() => selectTab('screener')}>
+          <LayoutDashboard size={19} />
+          <span>Overview</span>
+          {filteredSignals.length > 0 && <span className="bottom-nav-dot" />}
+        </button>
+        <button className={`bottom-nav-item ${activeTab === 'intraday' ? 'active' : ''}`} onClick={() => selectTab('intraday')}>
+          <CandlestickChart size={19} />
+          <span>Intraday</span>
+        </button>
+        <button className={`bottom-nav-item ${activeTab === 'options' ? 'active' : ''}`} onClick={() => selectTab('options')}>
+          <Activity size={19} />
+          <span>Options</span>
+        </button>
+        <button className={`bottom-nav-item ${activeTab === 'portfolio' ? 'active' : ''}`} onClick={() => selectTab('portfolio')}>
+          <Wallet size={19} />
+          <span>Portfolio</span>
+        </button>
+        <button className={`bottom-nav-item ${mobileMenuOpen || ['history', 'flow-watch', 'stock-analysis', 'regime', 'backtest'].includes(activeTab) ? 'active' : ''}`} onClick={() => setMobileMenuOpen(true)}>
+          <Menu size={19} />
+          <span>Menu</span>
+        </button>
+      </nav>
     </div>
 
     {selectedChartTrade && <div className="spatial-modal-backdrop" onClick={() => setSelectedChartTrade(null)}>
