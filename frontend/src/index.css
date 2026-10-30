@@ -286,25 +286,25 @@ th { color: var(--text-muted); font-weight: 700; }
 .setup-strategy, .card-prices span, .modal-metrics span, .confidence, .research-value small { color: var(--text-muted); }
 .direction-badge, .value-badge, .regime-badge, .rr-badge, .strategy-tag, .strategy-tag-list, .history-outcome, .portfolio-action, .research-badge { min-height: 2rem; display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text); font-weight: 700; }
 .direction-badge.bullish, .value-badge.gain, .positive-badge { background: var(--positive-fill); color: var(--positive-text); border-style: double; }
-.direction-badge.bearish, .value-badge.loss, .negative-badge { background: var(--negative-fill); color: var(--negative-text); border-width: .1875rem; border-style: dashed; }
+.direction-badge.bearish, .value-badge.loss, .negative-badge { background: var(--negative-fill); color: var(--negative-text); border-width: .1875rem; border-style: solid; }
 .regime-badge.state-strong-bull { border-style: double; }
-.regime-badge.state-pullback-bull { border-style: dashed; }
+.regime-badge.state-pullback-bull { border-style: solid; }
 .regime-badge.state-sideways-choppy { border-style: solid; }
-.regime-badge.state-bearish-correction { border-style: dashed; border-width: .1875rem; }
+.regime-badge.state-bearish-correction { border-style: solid; border-width: .1875rem; }
 .regime-badge.state-extreme-panic-oversold { border-style: double; border-width: .25rem; }
 .positive, .negative { color: var(--text) !important; font-weight: 700; }
 .td-positive, .td-negative, td.positive, td.negative { border-left: .1875rem solid var(--text); padding-left: var(--space-2); }
-.negative, td.negative { border-left-style: dashed; }
+.negative, td.negative { border-left-style: solid; }
 .positive, td.positive { border-left-style: double; }
 span.positive, strong.positive, b.positive, small.positive { display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: double; border-radius: var(--radius-sm); background: var(--positive-fill); color: var(--positive-text) !important; }
-span.negative, strong.negative, b.negative, small.negative { display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: dashed; border-width: .1875rem; border-radius: var(--radius-sm); background: var(--negative-fill); color: var(--negative-text) !important; }
+span.negative, strong.negative, b.negative, small.negative { display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: solid; border-width: .1875rem; border-radius: var(--radius-sm); background: var(--negative-fill); color: var(--negative-text) !important; }
 .move-value.positive, .metric-change.positive { padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: double; border-radius: var(--radius-sm); background: var(--positive-fill); color: var(--positive-text) !important; }
-.move-value.negative, .metric-change.negative { padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: dashed; border-width: .1875rem; border-radius: var(--radius-sm); background: var(--negative-fill); color: var(--negative-text) !important; }
+.move-value.negative, .metric-change.negative { padding: var(--space-1) var(--space-2); border: var(--border-control); border-style: solid; border-width: .1875rem; border-radius: var(--radius-sm); background: var(--negative-fill); color: var(--negative-text) !important; }
 .visually-hidden { width: 1px; height: 1px; position: absolute; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 .value-number { font-variant-numeric: tabular-nums; }
 .value-label { font-weight: 700; }
 .value-badge.gain { border-style: double; background: var(--positive-fill); color: var(--positive-text); }
-.value-badge.loss { border-style: dashed; border-width: .1875rem; background: var(--negative-fill); color: var(--negative-text); }
+.value-badge.loss { border-style: solid; border-width: .1875rem; background: var(--negative-fill); color: var(--negative-text); }
 .value-badge { gap: var(--space-1); }
 .stop-value, .target-value { color: var(--text) !important; font-weight: 700; }
 .rr-badge { font-variant-numeric: tabular-nums; }
@@ -337,7 +337,7 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .research-signal-legend, .stock-signal-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .signal-good, .signal-bad, .signal-watch, .signal-neutral { border: var(--border-control); border-radius: var(--radius-sm); padding: var(--space-2); background: var(--surface-raised); color: var(--text); }
 .signal-good { border-style: double; }
-.signal-bad { border-style: dashed; border-width: .1875rem; }
+.signal-bad { border-style: solid; border-width: .1875rem; }
 .signal-watch { border-style: solid; }
 .signal-neutral { border-style: solid; }
 .research-news-list { display: grid; gap: var(--space-3); padding-left: var(--space-5); }
@@ -359,10 +359,10 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .history-date-heading { margin-bottom: var(--space-2); }
 .history-outcome.open { border-style: solid; }
 .history-outcome.target_hit { border-style: double; }
-.history-outcome.stop_loss { border-style: dashed; }
+.history-outcome.stop_loss { border-style: solid; }
 .trade-exit-reason, .trade-result-chip { min-height: var(--target-size); display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface-raised); }
 .trade-exit-reason.win, .trade-result-chip.win { border-style: double; }
-.trade-exit-reason.loss, .trade-result-chip.loss { border-style: dashed; border-width: .1875rem; }
+.trade-exit-reason.loss, .trade-result-chip.loss { border-style: solid; border-width: .1875rem; }
 .history-disclaimer, .trading-disclaimer, .stock-analysis-disclaimer { margin-block: var(--space-4); }
 .stock-analysis-section-heading { align-items: flex-end; }
 .stock-analysis-section-heading h2 { margin: var(--space-1) 0; }
@@ -375,7 +375,7 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .intraday-card-reasons { display: grid; gap: var(--space-2); }
 .fresh, .stale { display: inline-flex; align-items: center; gap: var(--space-2); border: var(--border-control); padding: var(--space-2); border-radius: var(--radius-sm); }
 .fresh { border-style: double; }
-.stale { border-style: dashed; }
+.stale { border-style: solid; }
 .trading-signal-banner { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-card); border-radius: var(--radius-lg); background: var(--surface); }
 .trading-signal-copy { display: grid; gap: var(--space-2); }
 .stock-analysis-readout-grid article, .stock-analysis-fundamental { display: grid; gap: var(--space-2); }
@@ -396,9 +396,9 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .breadth-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); }
 .strategy-status-group, .strategy-status-row { display: grid; gap: var(--space-2); margin-block: var(--space-2); }
 .strategy-status-row { padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); }
-.status-warning { border-style: dashed !important; border-width: .1875rem !important; padding: var(--space-2); }
+.status-warning { border-style: solid !important; border-width: .1875rem !important; padding: var(--space-2); }
 .strategy-tag-list { flex-wrap: wrap; }
-.portfolio-notice { border-style: dashed; }
+.portfolio-notice { border-style: solid; }
 .modal-metrics > div { display: grid; gap: var(--space-1); }
 .hero-index, .hero-feature-index, .hero-graphic, .hero-graphic-ring, .hero-graphic-core, .hero-star { display: none !important; }
 
@@ -406,7 +406,7 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .cyber-toast { position: fixed; inset: auto var(--space-3) calc(var(--mobile-nav-height) + var(--space-3)); z-index: 999; max-width: min(32rem, calc(100vw - 2rem)); display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-card); border-radius: var(--radius-lg); background: var(--surface-raised); color: var(--text); }
 .cyber-toast-copy { min-width: 0; display: grid; gap: var(--space-1); }
 .toast-success { border-style: double; }
-.toast-warning { border-style: dashed; border-width: .1875rem; }
+.toast-warning { border-style: solid; border-width: .1875rem; }
 .toast-info { border-style: solid; }
 .cyber-toast-status { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 700; }
 .cyber-toast button { min-width: var(--target-size); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface); }
