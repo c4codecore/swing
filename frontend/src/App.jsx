@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, AudioLines, BarChart3, Bell, BookOpen,
   CandlestickChart, Check, ChevronDown, CircleHelp, Compass, Copy, LayoutDashboard,
   History, LineChart, MoreHorizontal, Search, ShieldCheck,
-  Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio, Menu
+  Settings, Sparkles, Table2, Target, Volume2, VolumeX, Wallet, X, RefreshCw, Radio, Menu
 } from 'lucide-react';
 import appLogo from './assets/logo.png';
 import StockChart from './components/StockChart';
@@ -18,6 +18,8 @@ import AppearanceControls from './components/AppearanceControls';
 import FontScaleControls from './components/FontScaleControls';
 import ValueBadge from './components/ValueBadge';
 import { playTone, setSoundEnabled } from './utils/soundFx';
+
+const DEFAULT_THEME = 'codecore';
 
 function readAppearancePreference(key, fallback) {
   try { return window.localStorage.getItem(key) ?? fallback; }
@@ -43,6 +45,7 @@ const marketNavigation = [
   { id: 'intraday', label: 'Intraday', icon: CandlestickChart },
   { id: 'options', label: 'Options', icon: Activity },
 ];
+const settingsNavigation = [{ id: 'settings', label: 'Settings', icon: Settings }];
 const MANUAL_PORTFOLIO_KEY = 'marketvoice-manual-portfolio-v1';
 const LEGACY_MANUAL_PORTFOLIO_KEY = 'swing-trading-manual-portfolio-v1';
 const HISTORY_HOLDING_DAYS_KEY = 'marketvoice-history-holding-days-v1';
@@ -398,7 +401,7 @@ function PortfolioView({ data, loading, saving, storageStatus, saveError, error,
 }
 
 export default function App() {
-  const [theme, setTheme] = useState(() => readAppearancePreference('marketvoice-theme', 'dark'));
+  const [theme, setTheme] = useState(() => readAppearancePreference('marketvoice-theme', DEFAULT_THEME));
   const [dim, setDim] = useState(() => readAppearancePreference('marketvoice-dim', 'normal'));
   const [grayscale, setGrayscale] = useState(() => readAppearancePreference('marketvoice-grayscale', 'false') === 'true');
   const [decorativeMotion, setDecorativeMotion] = useState(() => readAppearancePreference('marketvoice-motion', 'false') === 'true');
@@ -442,7 +445,7 @@ export default function App() {
     root.dataset.decorativeMotion = decorativeMotion ? 'on' : 'off';
     root.dataset.fontScale = String(fontScale);
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.content = theme === 'light' ? '#ffffff' : theme === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches ? '#ffffff' : '#191919';
+    if (themeMeta) themeMeta.content = theme === 'light' ? '#ffffff' : theme === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches ? '#ffffff' : '#111318';
     try {
       window.localStorage.setItem('marketvoice-theme', theme);
       window.localStorage.setItem('marketvoice-dim', dim);
@@ -743,7 +746,7 @@ export default function App() {
   const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   const iiflQuoteIsToday = Boolean(liveQuote?.tick_at && liveQuote.tick_at.slice(0, 10) === istToday);
   const displayedNiftyPrice = isMarketOpen && hasLiveQuote ? liveQuote.price : iiflQuoteIsToday ? liveQuote.price : metrics.nifty_close ?? liveQuote?.price;
-  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : 'Test a strategy';
+  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : activeTab === 'settings' ? 'Settings' : 'Test a strategy';
 
   const selectTab = id => {
     setActiveTab(id);
@@ -783,11 +786,15 @@ export default function App() {
           <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
         </button>)}
       </nav>
+      <div className="rail-divider rail-lower" />
+      <nav className="side-nav" aria-label="Settings navigation">
+        {settingsNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={`side-nav-item ${activeTab === id ? 'selected' : ''}`} onClick={() => selectTab(id)} title={label}>
+          <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
+        </button>)}
+      </nav>
       <div className="rail-spacer" />
       <button className="side-nav-item support-item" onClick={() => showToast('Help center coming soon', 'info')}><CircleHelp size={18} /><span>Help & support</span></button>
       <button className="profile-button" aria-label="Account settings" onClick={() => showToast('Account settings coming soon', 'info')}><span className="avatar">A</span><span className="profile-copy"><b>Analyst</b><small>Personal workspace</small></span><MoreHorizontal size={17} /></button>
-      <FontScaleControls compact value={fontScale} onChange={setFontScale} />
-      <AppearanceControls compact theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} />
     </aside>
 
     <div className="workspace">
@@ -799,12 +806,10 @@ export default function App() {
           <div className="breadcrumb"><span className="crumb-app">MarketVoice</span><span className="crumb-slash">/</span><strong>{marketName}</strong></div>
         </div>
         <div className="topbar-actions">
-          <FontScaleControls value={fontScale} onChange={setFontScale} />
           <div className={`session-pill ${isMarketOpen ? 'session-open' : ''}`}><span className="session-indicator" /><span>{isMarketOpen ? 'NSE market open' : 'Market closed'}</span><i />{currentTime} IST</div>
           <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
           <button className="icon-button" title={soundOn ? 'Mute sound' : 'Enable sound'} onClick={toggleSound}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
           <button className="icon-button notification-button" title="Notifications" onClick={() => showToast('You’re all caught up', 'info')}><Bell size={17} /><span /></button>
-          <AppearanceControls theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} />
           {activeTab === 'screener' && <button className="scan-button" onClick={() => runScreener(true)} disabled={loading}>{loading ? <RefreshCw className="spin" size={16} /> : <Sparkles size={16} />}{loading ? 'Scanning' : 'Run scan'}</button>}
         </div>
       </header>
@@ -870,6 +875,13 @@ export default function App() {
         {activeTab === 'options' && <TradingStrategiesView mode="options" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
         {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market mood</h1><p>See whether the overall market looks strong, weak or mixed.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
         {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">LEARN FROM PAST PRICES</div><h1>Test a strategy</h1><p>See how a share-picking idea would have worked on older prices.</p></div><span className="research-badge"><BookOpen size={14} /> Learning tool</span></div><BacktestLab /></section>}
+        {activeTab === 'settings' && <section className="module-page settings-page">
+          <div className="module-heading"><div><div className="eyebrow subtle-eyebrow">PERSONALIZE MARKETVOICE</div><h1>Settings</h1><p>Adjust the theme, brightness, text size, and accessibility previews.</p></div></div>
+          <div className="settings-grid">
+            <section className="settings-card"><div className="settings-card-heading"><Settings size={20} /><div><h2>Appearance</h2><p>Choose a theme and tune display comfort.</p></div></div><AppearanceControls theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} /></section>
+            <section className="settings-card"><div className="settings-card-heading"><span className="settings-type-icon">A+</span><div><h2>Text size</h2><p>Increase the interface text in five steps.</p></div></div><FontScaleControls value={fontScale} onChange={setFontScale} /></section>
+          </div>
+        </section>}
       </main>
 
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
@@ -890,7 +902,7 @@ export default function App() {
           <Wallet size={19} />
           <span>Portfolio</span>
         </button>
-        <button className={`bottom-nav-item ${mobileMenuOpen || ['history', 'flow-watch', 'stock-analysis', 'regime', 'backtest'].includes(activeTab) ? 'active' : ''}`} onClick={() => setMobileMenuOpen(true)}>
+        <button className={`bottom-nav-item ${mobileMenuOpen || ['history', 'flow-watch', 'stock-analysis', 'regime', 'backtest', 'settings'].includes(activeTab) ? 'active' : ''}`} onClick={() => setMobileMenuOpen(true)}>
           <Menu size={19} />
           <span>Menu</span>
         </button>

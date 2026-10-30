@@ -532,3 +532,194 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
   .appearance-panel { position: fixed; top: auto; right: var(--space-2); bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom) + var(--space-2)); }
   .card-prices, .card-prices-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* CodeCore Colorful Dark is a semantic palette over the existing accessible
+   layout. Dim modes keep the palette's hierarchy while lowering luminance. */
+:root[data-theme="codecore"] {
+  color-scheme: dark;
+  --bg: #111318;
+  --surface: #1a1f27;
+  --surface-raised: #242b35;
+  --text: #e6e8ec;
+  --text-muted: #c8ced6;
+  --text-quiet: #c0c7d0;
+  --text-inverse: #111318;
+  --accent: #76c7a7;
+  --positive-fill: #75c6a3;
+  --positive-text: #111318;
+  --negative-fill: transparent;
+  --negative-text: #e6e8ec;
+  --warning-fill: #28251d;
+  --warning-text: #e6e8ec;
+  --error-fill: #291e22;
+  --success-fill: #1d2925;
+  --border-color: #727c89;
+  --border-soft: #697380;
+  --overlay: rgb(4 6 9 / 82%);
+  --border-control: 2px solid var(--border-color);
+  --border-card: 1px solid var(--border-color);
+  --border-focus: 3px solid #d8e0e8;
+  --cc-green: #75c6a3;
+  --cc-amber: #c8a75c;
+  --cc-sky: #70afc8;
+  --cc-rose: #c47f89;
+  --cc-violet: #a091c8;
+  --cc-cyan: #77bcc1;
+  --cc-blue: #829fc2;
+  --cc-lime: #abb96f;
+  --cc-alert-dark: #60434a;
+}
+:root[data-theme="codecore"][data-dim="dim"] {
+  --bg: #101216;
+  --surface: #181c23;
+  --surface-raised: #202630;
+  --text: #dedfe3;
+  --text-muted: #c3c7ce;
+  --text-quiet: #bbc0c8;
+  --border-color: #707986;
+  --border-soft: #68717e;
+}
+:root[data-theme="codecore"][data-dim="extra"] {
+  --bg: #0f1114;
+  --surface: #161a20;
+  --surface-raised: #1e242c;
+  --text: #d8dadd;
+  --text-muted: #bec3ca;
+  --text-quiet: #b8bec6;
+  --border-color: #6d7682;
+  --border-soft: #656e7a;
+}
+:root[data-theme="codecore"] body,
+:root[data-theme="codecore"] .spatial-app { background: var(--bg); color: var(--text); }
+:root[data-theme="codecore"] .side-rail { background: #151a22; border-right-color: var(--border-color); }
+:root[data-theme="codecore"] .feature-hero,
+:root[data-theme="codecore"] .module-heading {
+  padding: 1.25rem;
+  border: var(--border-card);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+:root[data-theme="codecore"] .metric-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 1.25rem;
+  border-color: var(--border-color);
+}
+:root[data-theme="codecore"] .metric-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: .25rem;
+  content: "";
+  background: var(--metric-accent, var(--cc-green));
+}
+:root[data-theme="codecore"] .metric-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, currentColor 12%, var(--surface));
+  color: var(--metric-accent, var(--cc-green));
+}
+:root[data-theme="codecore"] .tone-mint { --metric-accent: var(--cc-green); }
+:root[data-theme="codecore"] .tone-lilac { --metric-accent: var(--cc-violet); }
+:root[data-theme="codecore"] .tone-peach { --metric-accent: var(--cc-rose); }
+:root[data-theme="codecore"] .tone-amber { --metric-accent: var(--cc-amber); }
+:root[data-theme="codecore"] .tone-sky { --metric-accent: var(--cc-sky); }
+:root[data-theme="codecore"] .tone-cyan { --metric-accent: var(--cc-cyan); }
+:root[data-theme="codecore"] .tone-blue { --metric-accent: var(--cc-blue); }
+:root[data-theme="codecore"] .tone-lime { --metric-accent: var(--cc-lime); }
+:root[data-theme="codecore"] .metric-top > span:first-child,
+:root[data-theme="codecore"] .research-section-heading > div > span,
+:root[data-theme="codecore"] .research-value > span,
+:root[data-theme="codecore"] .card-prices > div > span {
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+:root[data-theme="codecore"] .metric-value,
+:root[data-theme="codecore"] .hero-market-price-row strong,
+:root[data-theme="codecore"] .exposure-card strong,
+:root[data-theme="codecore"] .metric-val { font-variant-numeric: tabular-nums; }
+:root[data-theme="codecore"] :is(.metric-card, .regime-card, .setup-card, .table-shell, .insight-banner, .glass-card, .stock-analysis-panel, .history-date-group, .flow-panel, .trading-rationale, .options-legs, .stock-analysis-search, .stock-analysis-overview, .stock-analysis-metric, .stock-analysis-fundamental, .stock-deshi-verdict, .research-section, .research-value, .portfolio-notice) {
+  background-color: var(--surface);
+  border-color: var(--border-color);
+}
+:root[data-theme="codecore"] .side-nav-item,
+:root[data-theme="codecore"] .appearance-quick,
+:root[data-theme="codecore"] .appearance-trigger,
+:root[data-theme="codecore"] .setting-button,
+:root[data-theme="codecore"] .secondary-button,
+:root[data-theme="codecore"] .filter-pill,
+:root[data-theme="codecore"] .filter-chip { border-color: var(--border-color); }
+:root[data-theme="codecore"] .positive,
+:root[data-theme="codecore"] .signal-good { --status-accent: var(--cc-green); }
+:root[data-theme="codecore"] .negative,
+:root[data-theme="codecore"] .signal-bad { --status-accent: var(--cc-alert-dark); }
+:root[data-theme="codecore"] .warning,
+:root[data-theme="codecore"] .signal-watch { --status-accent: var(--cc-amber); }
+:root[data-theme="codecore"] .history-outcome,
+:root[data-theme="codecore"] .direction-badge,
+:root[data-theme="codecore"] .regime-badge { border-color: var(--border-color); }
+:root[data-theme="codecore"] .mobile-bottom-nav { background: var(--surface); border-color: var(--border-color); }
+:root[data-theme="codecore"] .settings-card {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border: var(--border-card);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+:root[data-theme="codecore"] .settings-card-heading { display: flex; align-items: flex-start; gap: .875rem; }
+:root[data-theme="codecore"] .settings-card-heading > svg,
+:root[data-theme="codecore"] .settings-type-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: .5rem;
+  border: 1px solid var(--cc-sky);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--cc-sky) 12%, var(--surface));
+  color: var(--cc-sky);
+}
+:root[data-theme="codecore"] .settings-card-heading h2 { margin: 0; font-size: 1.25rem; }
+:root[data-theme="codecore"] .settings-card-heading p { margin: .25rem 0 0; color: var(--text-muted); }
+:root[data-theme="codecore"] .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; }
+:root[data-theme="codecore"] .settings-appearance-controls { display: grid; align-items: stretch; gap: 1rem; }
+:root[data-theme="codecore"] .settings-appearance-controls .setting-field { display: grid; gap: .5rem; }
+:root[data-theme="codecore"] .settings-appearance-controls select,
+:root[data-theme="codecore"] .settings-appearance-controls .appearance-quick,
+:root[data-theme="codecore"] .settings-appearance-controls .setting-button,
+:root[data-theme="codecore"] .settings-page .font-scale-controls { width: 100%; min-height: 3rem; }
+:root[data-theme="codecore"] .settings-appearance-controls .appearance-quick { justify-content: flex-start; }
+:root[data-theme="codecore"] .settings-appearance-controls .setting-hint { margin: 0; }
+:root[data-theme="codecore"] .settings-page .font-scale-controls { justify-content: space-between; padding: .5rem; }
+:root[data-theme="codecore"] .settings-page .font-scale-label { padding-inline: .5rem; }
+:root[data-theme="codecore"] .settings-page .font-scale-buttons { gap: .5rem; }
+:root[data-theme="codecore"] .settings-page .font-scale-buttons button { min-width: 3rem; min-height: 3rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="codecore"] *,
+  :root[data-theme="codecore"] *::before,
+  :root[data-theme="codecore"] *::after { animation: none !important; transition: none !important; }
+}
+
+/* Keep the sidebar footer and navigation from shrinking into one another when
+   users increase the interface text size. The rail remains scrollable. */
+.side-rail { overscroll-behavior: contain; }
+.side-rail > :not(.rail-spacer) { flex-shrink: 0; }
+.rail-spacer { flex: 1 0 .5rem; min-height: .5rem; }
+.profile-button { flex: 0 0 auto; min-height: var(--target-size); }
+.profile-button .avatar,
+.profile-button > svg { flex: 0 0 auto; }
+.profile-copy { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+.profile-copy b,
+.profile-copy small { display: block; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  :root[data-theme="codecore"] .settings-grid { grid-template-columns: minmax(0, 1fr); }
+}
