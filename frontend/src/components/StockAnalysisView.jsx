@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, RefreshCw, Search, ShieldAlert } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeftRight, ArrowUpDown, ArrowUpRight, BarChart3, CalendarDays, CheckCircle2, Eye, Gauge, Info, LineChart, RefreshCw, Search, ShieldAlert, Waves } from 'lucide-react';
 import StockChart from './StockChart';
 import { formatINR, formatNumber, formatPercent } from '../utils/formatters';
 
@@ -17,8 +17,16 @@ function toneText(tone) {
   return tone === 'good' ? 'Looks good' : tone === 'bad' ? 'Needs care' : tone === 'watch' ? 'Keep an eye' : 'For information';
 }
 
-function Metric({ label, value, tone = 'neutral' }) {
-  return <article className={`stock-analysis-metric signal-${tone}`}><span>{label}</span><strong>{value ?? '—'}</strong><small className={`stock-signal-tag signal-${tone}`}>{toneText(tone)}</small></article>;
+const metricIcons = [ArrowUpDown, Activity, Gauge, ArrowLeftRight, CalendarDays, Waves, BarChart3, LineChart];
+
+function Metric({ label, value, tone = 'neutral', index = 0 }) {
+  const Icon = metricIcons[index % metricIcons.length];
+  const StatusIcon = tone === 'good' ? CheckCircle2 : tone === 'bad' ? AlertTriangle : tone === 'watch' ? Eye : Info;
+  return <article className="stock-analysis-metric" data-tone={tone}>
+    <div className="stock-analysis-metric-heading"><span className="stock-analysis-metric-icon"><Icon size={22} aria-hidden="true" /></span><span>{label}</span></div>
+    <strong className="stock-analysis-metric-value">{value ?? '—'}</strong>
+    <small className="stock-signal-tag" data-tone={tone}><StatusIcon size={18} aria-hidden="true" />{toneText(tone)}</small>
+  </article>;
 }
 
 function technicalTone(metric, technical) {
@@ -117,21 +125,6 @@ export default function StockAnalysisView() {
   const strengthTone = technicalTone('relative', technical);
   const returnTone = technicalTone('returns', technical);
   const volatilityTone = technicalTone('atr', technical);
-  const momentumRead = technical.rsi14 == null ? 'Not enough price history'
-    : technical.rsi14 >= 70 ? 'Price has risen quickly and may cool down'
-      : technical.rsi14 <= 30 ? 'Recent prices have weakened sharply'
-        : technical.rsi14 >= 55 ? 'Recent prices have mostly moved up'
-          : technical.rsi14 <= 45 ? 'Recent prices have mostly moved down' : 'Recent prices are mixed';
-  const strengthRead = technical.mansfield_rs63 == null ? 'Nifty comparison unavailable'
-    : technical.mansfield_rs63 > 0 ? 'This share has done better than Nifty'
-      : technical.mansfield_rs63 < 0 ? 'This share has done worse than Nifty' : 'About the same as Nifty';
-  const volatilityRead = technical.atr14_pct == null ? 'Daily price movement unavailable'
-    : technical.atr14_pct >= 5 ? 'Price often moves a lot in one day'
-      : technical.atr14_pct >= 2.5 ? 'Price moves a moderate amount in one day' : 'Price usually moves less in one day';
-  const fundamentalRead = fundamentals.status === 'unavailable' ? 'Company details are unavailable'
-    : fundamentals.trailing_pe != null && fundamentals.return_on_equity != null
-      ? `Price vs earnings: ${Number(fundamentals.trailing_pe).toFixed(2)} · profit on shareholder money: ${percent(fundamentals.return_on_equity * 100)}`
-      : 'Some company details are unavailable';
   const simpleTrend = technical.trend === 'Bullish alignment' ? 'Price is above its short- and long-term averages'
     : technical.trend === 'Above EMA 50' ? 'Price is above its 50-day average'
       : technical.trend === 'Below EMA 50' ? 'Price is below its 50-day average' : technical.trend || 'Unavailable';
@@ -145,6 +138,7 @@ export default function StockAnalysisView() {
       : cautionCount >= 3 && supportiveCount === 0
         ? { tone: 'bad', title: 'Filhaal sambhal kar chalna behtar hai', text: 'Trend aur relative performance mein kamzori dikh rahi hai. Naya kadam lene se pehle behtari ki tasdeeq ka intezaar karein.' }
         : { tone: 'watch', title: 'Abhi ishare mile-jule hain', text: 'Kuch pehlu support karte hain, kuch savdhaani dikha rahe hain. Jaldi na karein; agle price action aur company updates par nazar rakhein.' };
+  const VerdictIcon = verdict.tone === 'good' ? CheckCircle2 : verdict.tone === 'bad' ? AlertTriangle : verdict.tone === 'watch' ? Eye : Info;
 
   return <section className="module-page stock-analysis-page">
     <div className="module-heading">
@@ -182,27 +176,25 @@ export default function StockAnalysisView() {
         <div className="stock-analysis-price"><span>LATEST DAILY PRICE</span><strong>{price(technical.close)}</strong><small>As of {technical.as_of || 'unavailable'}</small></div>
       </section>
 
-      <div className="stock-signal-legend"><span className="signal-good">Green · looks good</span><span className="signal-bad">Red · needs care</span><span className="signal-watch">Amber · keep an eye on it</span><span className="signal-neutral">Grey · extra information</span></div>
+      <div className="stock-signal-legend" aria-label="Status key"><span><CheckCircle2 aria-hidden="true" /> Looks good</span><span><AlertTriangle aria-hidden="true" /> Needs care</span><span><Eye aria-hidden="true" /> Keep an eye on it</span><span><Info aria-hidden="true" /> For information</span></div>
       <div className="stock-analysis-grid">
-        <Metric label="Price direction" value={simpleTrend} tone={trendTone} />
-        <Metric label="Recent price strength" value={technical.rsi14 != null ? formatNumber(technical.rsi14) : '—'} tone={momentumTone} />
-        <Metric label="How steady the trend is" value={technical.adx14 != null ? formatNumber(technical.adx14) : '—'} tone={technicalTone('adx', technical)} />
-        <Metric label="Price change vs Nifty" value={technical.mansfield_rs63 != null ? percent(technical.mansfield_rs63) : '—'} tone={strengthTone} />
-        <Metric label="Price change over 1 / 3 months" value={technical.return20_pct != null && technical.return63_pct != null ? `${percent(technical.return20_pct)} / ${percent(technical.return63_pct)}` : '—'} tone={returnTone} />
-        <Metric label="Usual daily price movement" value={technical.atr14_pct != null ? formatPercent(technical.atr14_pct) : '—'} tone={volatilityTone} />
-        <Metric label="Trading today vs usual" value={technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'} tone={technicalTone('volume', technical)} />
-        <Metric label="Average price over 1 / 2 / 10 months" value={technical.ema20 != null ? `${price(technical.ema20)} / ${price(technical.ema50)} / ${price(technical.ema200)}` : '—'} tone={technicalTone('ema', technical)} />
+        <Metric index={0} label="Price direction" value={simpleTrend} tone={trendTone} />
+        <Metric index={1} label="Recent price strength" value={technical.rsi14 != null ? formatNumber(technical.rsi14) : '—'} tone={momentumTone} />
+        <Metric index={2} label="How steady the trend is" value={technical.adx14 != null ? formatNumber(technical.adx14) : '—'} tone={technicalTone('adx', technical)} />
+        <Metric index={3} label="Price change vs Nifty" value={technical.mansfield_rs63 != null ? percent(technical.mansfield_rs63) : '—'} tone={strengthTone} />
+        <Metric index={4} label="Price change over 1 / 3 months" value={technical.return20_pct != null && technical.return63_pct != null ? `${percent(technical.return20_pct)} / ${percent(technical.return63_pct)}` : '—'} tone={returnTone} />
+        <Metric index={5} label="Usual daily price movement" value={technical.atr14_pct != null ? formatPercent(technical.atr14_pct) : '—'} tone={volatilityTone} />
+        <Metric index={6} label="Trading today vs usual" value={technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'} tone={technicalTone('volume', technical)} />
+        <Metric index={7} label="Average price over 1 / 2 / 10 months" value={technical.ema20 != null ? `${price(technical.ema20)} / ${price(technical.ema50)} / ${price(technical.ema200)}` : '—'} tone={technicalTone('ema', technical)} />
       </div>
 
-      <section className="stock-analysis-panel">
+      <section className="stock-analysis-panel stock-quick-read">
         <div className="stock-analysis-section-heading"><div><div className="eyebrow subtle-eyebrow">SIMPLE SUMMARY</div><h2>What recent prices suggest</h2></div><span>Helpful clues, not instructions to buy or sell</span></div>
-        <div className="stock-analysis-readout-grid">
-          <article className={`signal-${trendTone}`}><span>Price direction</span><strong>{simpleTrend}</strong><small>Compared with recent average prices</small></article>
-          <article className={`signal-${momentumTone}`}><span>Recent price strength</span><strong>{momentumRead.replace(/RSI is /, 'Price is ')}</strong><small>Shows whether the recent move is strong or stretched</small></article>
-          <article className={`signal-${strengthTone}`}><span>Price change vs Nifty</span><strong>{strengthRead.replace('Outperforming', 'Doing better than').replace('Underperforming', 'Doing worse than')}</strong><small>Compared with the Nifty over about 3 months</small></article>
-          <article className={`signal-${volatilityTone}`}><span>Usual daily price movement</span><strong>{volatilityRead.replace('Volatility data', 'Price movement data').replace('ATR', 'daily range')}</strong><small>How much the share price often moves in a day</small></article>
-          <article className={`signal-${fundamentals.status === 'unavailable' ? 'neutral' : 'watch'}`}><span>Company details</span><strong>{fundamentalRead}</strong><small>Some figures may be delayed or missing</small></article>
-        </div>
+        <article className="stock-quick-read-card" data-tone={verdict.tone}>
+          <span className="stock-quick-read-icon"><VerdictIcon size={22} aria-hidden="true" /></span>
+          <div><strong>{verdict.title}</strong><p>{verdict.text}</p></div>
+          <small>{supportiveCount} signs look positive <span aria-hidden="true">·</span> {cautionCount} signs need care</small>
+        </article>
       </section>
 
       <section className="stock-analysis-panel">
@@ -234,7 +226,7 @@ export default function StockAnalysisView() {
             ['Revenue growth', fundamentals.revenue_growth == null ? null : percent(fundamentals.revenue_growth * 100), 'text', fundamentals.revenue_growth * 100], ['Earnings growth', fundamentals.earnings_growth == null ? null : percent(fundamentals.earnings_growth * 100), 'text', fundamentals.earnings_growth * 100],
             ['Profit earned on shareholder money', fundamentals.return_on_equity == null ? null : percent(fundamentals.return_on_equity * 100), 'text', fundamentals.return_on_equity * 100], ['Profit left from sales', fundamentals.profit_margin == null ? null : percent(fundamentals.profit_margin * 100), 'text', fundamentals.profit_margin * 100],
             ['Debt compared with shareholder money', fundamentals.debt_to_equity, 'number'], ['Money available for near-term bills', fundamentals.current_ratio, 'number'], ['Cash left after spending', fundamentals.free_cash_flow, 'money'], ['Price movement compared with market', fundamentals.beta, 'number'],
-          ].map(([label, value, kind, rawValue]) => { const tone = fundamentalTone(label, rawValue ?? value); return <div className={`stock-analysis-fundamental signal-${tone}`} key={label}><span>{label}</span><strong>{value == null ? '—' : kind === 'money' ? price(value) : kind === 'number' ? Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : value}</strong><small className={`stock-signal-tag signal-${tone}`}>{toneText(tone)}</small></div>; })}
+          ].map(([label, value, kind, rawValue]) => { const tone = fundamentalTone(label, rawValue ?? value); const StatusIcon = tone === 'good' ? CheckCircle2 : tone === 'bad' ? AlertTriangle : tone === 'watch' ? Eye : Info; return <div className="stock-analysis-fundamental" data-tone={tone} key={label}><span>{label}</span><strong>{value == null ? '—' : kind === 'money' ? price(value) : kind === 'number' ? Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : value}</strong><small className="stock-signal-tag" data-tone={tone}><StatusIcon size={18} aria-hidden="true" />{toneText(tone)}</small></div>; })}
         </div>
         {fundamentals.error && <p className="research-empty">{fundamentals.error}</p>}
       </section>
@@ -246,10 +238,6 @@ export default function StockAnalysisView() {
         {news.headlines?.length ? <ul className="research-news-list">{news.headlines.map((item, index) => <li key={`${item.title}-${index}`}><div>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.title}</a> : item.title}</div><small>{[item.source, item.published_at ? new Date(item.published_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : null].filter(Boolean).join(' · ')}</small></li>)}</ul> : <p className="research-empty">{news.status === 'unavailable' ? 'News could not be fetched. Check current announcements manually.' : 'No recent headlines were returned.'}</p>}
       </section>
       <p className="stock-analysis-disclaimer">For learning and research, not personal financial advice. Company figures and news may be delayed or incomplete. Any future price range is only an example from past prices; actual prices can be very different.</p>
-      <section className={`stock-deshi-verdict signal-${verdict.tone}`}>
-        <div><span>DESI VERDICT · RULE-BASED SUMMARY</span><h2>{verdict.title}</h2><p>{verdict.text}</p></div>
-        <small>{supportiveCount} signs look positive · {cautionCount} signs need care</small>
-      </section>
     </>}
   </section>;
 }
