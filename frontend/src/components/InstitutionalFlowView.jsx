@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, RefreshCw, Volume2 } from 'lucide-react';
+import { formatINR, formatNumber, formatPercent } from '../utils/formatters';
 
-const money = value => value == null ? '—' : `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-const crore = value => value == null ? '—' : `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 1 })} Cr`;
+const money = value => formatINR(value);
+const crore = value => value == null ? '—' : `${formatINR(value)} Cr`;
 
 function FlowTable({ title, rows, direction }) {
   const positive = direction === 'up';
@@ -17,9 +18,9 @@ function FlowTable({ title, rows, direction }) {
       <tbody>{rows.map((stock, index) => <tr key={stock.symbol}>
         <td><span className="flow-rank">{index + 1}</span><span className="flow-stock-name"><strong>{stock.symbol}</strong><small title={stock.company_name}>{stock.company_name}</small></span></td>
         <td className={positive ? 'positive' : 'negative'}><strong>{stock.flow_proxy_20d_cr > 0 ? '+' : ''}{crore(stock.flow_proxy_20d_cr)}</strong><small>Last 5 days: {stock.flow_proxy_5d_cr > 0 ? '+' : ''}{crore(stock.flow_proxy_5d_cr)}</small></td>
-        <td className={positive ? 'positive' : 'negative'}><strong>{stock.pressure_20d_pct > 0 ? '+' : ''}{stock.pressure_20d_pct}%</strong><small>Last 5 days: {stock.pressure_5d_pct > 0 ? '+' : ''}{stock.pressure_5d_pct}%</small></td>
-        <td><strong>{stock.volume_ratio_20d.toFixed(2)}× usual</strong><small>Average daily trades: {crore(stock.average_turnover_daily_cr)}</small></td>
-        <td>{money(stock.close)}<small className={Number(stock.change_pct) >= 0 ? 'positive' : 'negative'}>{Number(stock.change_pct) > 0 ? '+' : ''}{stock.change_pct}% today</small></td>
+        <td className={positive ? 'positive' : 'negative'}><strong>{formatPercent(stock.pressure_20d_pct, { signed: true })}</strong><small>Last 5 days: {formatPercent(stock.pressure_5d_pct, { signed: true })}</small></td>
+        <td><strong>{formatNumber(stock.volume_ratio_20d)}× usual</strong><small>Average daily trades: {crore(stock.average_turnover_daily_cr)}</small></td>
+        <td>{money(stock.close)}<small className={Number(stock.change_pct) >= 0 ? 'positive' : 'negative'}>{formatPercent(stock.change_pct, { signed: true })} today</small></td>
       </tr>)}</tbody>
     </table></div>}
   </section>;

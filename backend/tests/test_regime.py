@@ -99,12 +99,37 @@ def test_risk_off_entry_is_fast_but_exit_needs_two_closes():
     assert entered["pending_regime"] is None
     assert "BEARISH_CORRECTION" in RISK_OFF_STATES
 
-    first_exit = advance_hysteresis("STRONG_BULL", entered)
+    recovery = {"nifty_close": 110.0, "ema_50": 100.0}
+    first_exit = advance_hysteresis("STRONG_BULL", entered, metrics=recovery, breadth=NO_BREADTH)
     assert first_exit["confirmed_regime"] == "BEARISH_CORRECTION"
     assert first_exit["pending_regime"] == "STRONG_BULL"
     assert first_exit["pending_days"] == 1
-    second_exit = advance_hysteresis("STRONG_BULL", first_exit)
+    second_exit = advance_hysteresis("STRONG_BULL", first_exit, metrics=recovery, breadth=NO_BREADTH)
     assert second_exit["confirmed_regime"] == "STRONG_BULL"
+
+
+def test_bearish_exit_guard_needs_ema50_or_breadth_recovery(monkeypatch):
+    prior = advance_hysteresis("BEARISH_CORRECTION", None)
+    below_ema = {"nifty_close": 100.0, "ema_50": 105.0}
+    no_breadth = {"status": "unavailable", "universe_size": 50, "pct_above_50ema": None}
+    first = advance_hysteresis("SIDEWAYS_CHOPPY", prior, metrics=below_ema, breadth=no_breadth)
+    second = advance_hysteresis("SIDEWAYS_CHOPPY", first, metrics=below_ema, breadth=no_breadth)
+    assert first["pending_days"] == second["pending_days"] == 0
+    assert second["confirmed_regime"] == "BEARISH_CORRECTION"
+
+    recovered_breadth = {"status": "available", "universe_size": 200, "pct_above_50ema": 41.0}
+    qualifying_first = advance_hysteresis("SIDEWAYS_CHOPPY", second, metrics=below_ema, breadth=recovered_breadth)
+    qualifying_second = advance_hysteresis("SIDEWAYS_CHOPPY", qualifying_first, metrics=below_ema, breadth=recovered_breadth)
+    assert qualifying_first["pending_days"] == 1
+    assert qualifying_second["confirmed_regime"] == "SIDEWAYS_CHOPPY"
+
+
+def test_bearish_exit_guard_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(regime.config, "REGIME_BEARISH_EXIT_GUARD_ENABLED", False)
+    prior = advance_hysteresis("BEARISH_CORRECTION", None)
+    first = advance_hysteresis("SIDEWAYS_CHOPPY", prior)
+    second = advance_hysteresis("SIDEWAYS_CHOPPY", first)
+    assert second["confirmed_regime"] == "SIDEWAYS_CHOPPY"
 
 
 def test_breadth_below_200_is_unavailable_and_uses_benchmark_fallback(monkeypatch):

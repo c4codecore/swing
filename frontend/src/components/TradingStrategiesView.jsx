@@ -4,12 +4,10 @@ import {
   Copy, Filter, LayoutDashboard, RefreshCw, Search, ShieldAlert, Sparkles,
   Table2, Target, TrendingUp, X, Zap
 } from 'lucide-react';
+import { formatINR, formatPercent } from '../utils/formatters';
 
 function price(value) {
-  const number = Number(value);
-  return value == null || value === '' || !Number.isFinite(number)
-    ? '—'
-    : `₹${number.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatINR(value);
 }
 
 function candleTime(signal) {
@@ -212,7 +210,7 @@ function IntradayScreenerView({ connected, onConnect }) {
                   </td>
                   <td><span className="strategy-tag">{STRATEGY_ICONS[signal.strategy] || '📊'} {STRATEGY_LABELS[signal.strategy] || signal.strategy_title}</span></td>
                   <td><span className={`direction-badge ${isBullish ? 'bullish' : 'bearish'}`}>{isBullish ? '▲ BULL' : '▼ BEAR'}</span></td>
-                  <td><span className={`move-value ${positive ? 'positive' : 'negative'}`}><span aria-hidden="true">{positive ? '▲' : '▼'}</span>{positive ? '+' : '−'}{Math.abs(Number(signal.change_pct))}% <strong>{positive ? 'GAIN' : 'LOSS'}</strong></span></td>
+                <td><span className={`move-value ${positive ? 'positive' : 'negative'}`}><span aria-hidden="true">{positive ? '▲' : '▼'}</span>{formatPercent(Math.abs(Number(signal.change_pct)) * (positive ? 1 : -1), { signed: positive })} <strong>{positive ? 'GAIN' : 'LOSS'}</strong></span></td>
                   <td className="numeric-cell">{price(signal.entry_price)}</td>
                   <td className="numeric-cell stop-value">{price(signal.stop_loss)}</td>
                   <td className="numeric-cell target-value">{price(signal.target_1)}</td>
@@ -256,7 +254,7 @@ function IntradayScreenerView({ connected, onConnect }) {
               <ul>{(signal.reasons || []).slice(0, 3).map((reason, i) => <li key={i}>{reason}</li>)}</ul>
             </div>
             <div className="card-end">
-              <span className="rr-badge">{signal.risk_reward} to 1 · Risk {signal.risk_pct}%</span>
+              <span className="rr-badge">{signal.risk_reward} to 1 · Risk {formatPercent(signal.risk_pct, true)}</span>
               <div className="confidence">
                 <span className="confidence-track"><i style={{ width: `${Math.min(100, signal.confidence_score || 0)}%` }} /></span>
                 <b>{signal.confidence_score}%</b>

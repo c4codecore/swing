@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, BarChart2, CheckCircle2, Layers, Zap } from 'lucide-react';
+import { formatINR, formatNumber, formatPercent } from '../utils/formatters';
 
 const LABELS = {
   EXTREME_PANIC_OVERSOLD: 'Extreme panic',
@@ -15,7 +16,8 @@ const STRATEGY_NAMES = {
   volatility_squeeze: 'Breakout after a quiet period',
   multi_factor: 'Several positive checks agree',
 };
-const display = value => value == null || Number.isNaN(Number(value)) ? 'Unavailable' : `${value}`;
+const display = (value, suffix = '') => value == null || Number.isNaN(Number(value)) ? 'Unavailable'
+  : suffix === '₹' ? formatINR(value) : suffix === '%' ? formatPercent(value) : formatNumber(value);
 const REGIME_MARKS = {
   EXTREME_PANIC_OVERSOLD: '‼',
   BEARISH_CORRECTION: '▼',
@@ -65,12 +67,13 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
         </div>
         <div className="exposure-card">
           <div className="regime-kicker">Risk scaling weight</div>
-          <strong>{Math.round((regimeData.sizing_weight ?? 0) * 100)}%</strong>
-          <div>Default, not a tested optimum</div>
+          <strong>{formatPercent((regimeData.sizing_weight ?? 0) * 100)}</strong>
+          <div>Default risk setting. It has not been tested against past data.</div>
         </div>
       </div>
       <p>{regimeData.recommended_action}</p>
       <small>{regimeData.sizing_weight_note}</small>
+      {regimeData.bearish_exit_guard_enabled && <p className="regime-exit-rule">While the confirmed mood is bearish, leaving it requires two daily confirmations and either a Nifty close above its 50-day average or market breadth above {formatPercent(regimeData.bearish_exit_breadth_min)}.</p>}
       <div className="regime-tags">
         <span className="strategy-tag">Raw today: {LABELS[regimeData.raw_regime] || regimeData.raw_regime}</span>
         <span className="strategy-tag">Matched: {regimeData.classification_source === 'catch_all' ? 'catch-all rule' : 'defined rule'} · {regimeData.matching_rule}</span>
@@ -91,7 +94,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
         <div className="metrics-grid">
           {metricRows.map(([label, value, suffix]) => <div className="metric-item" key={label}>
             <div className="metric-label">{label}</div>
-            <div className="metric-val">{suffix === '₹' ? '₹' : ''}{display(value)}{suffix && suffix !== '₹' && value != null ? suffix : ''}</div>
+            <div className="metric-val">{display(value, suffix)}</div>
           </div>)}
         </div>
         <div className="breadth-panel">
@@ -99,7 +102,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
             <strong>Liquidity-filtered market breadth</strong>
             <span>{breadth.universe_size ?? 0} symbols · {regimeData.universe?.mode || 'configured universe'} · minimum {breadth.minimum_universe_size ?? 200}</span>
           </div>
-          <div>Above EMA20: {breadth.pct_above_20ema == null ? 'Unavailable' : `${breadth.pct_above_20ema}%`} · Above EMA50: {breadth.pct_above_50ema == null ? 'Unavailable' : `${breadth.pct_above_50ema}%`}</div>
+          <div>Above EMA20: {formatPercent(breadth.pct_above_20ema)} · Above EMA50: {formatPercent(breadth.pct_above_50ema)}</div>
           {breadth.warning && <div className="status-warning">Warning: {breadth.warning}</div>}
         </div>
       </section>
@@ -124,7 +127,7 @@ export default function RegimeView({ regimeData, onSelectStrategy }) {
       {history.length ? <div className="table-scroll"><table className="setups-table regime-history-table"><thead><tr><th>DATE</th><th>RAW</th><th>RULE</th><th>CONFIRMED</th><th>DAYS IN STATE</th><th>PENDING</th><th>WEIGHT</th></tr></thead><tbody>
         {history.map(item => <tr key={item.evaluated_on}>
           <td>{item.evaluated_on}</td><td>{LABELS[item.raw_regime] || item.raw_regime}</td><td>{item.classification_source === 'catch_all' ? 'Catch-all' : (item.matching_rule || '—')}</td><td>{LABELS[item.confirmed_regime] || item.confirmed_regime}</td><td>{item.days_in_state}</td>
-          <td>{item.pending_regime ? `${LABELS[item.pending_regime] || item.pending_regime} ${item.pending_days}/${item.pending_required_days}` : '—'}</td><td>{Math.round(item.sizing_weight * 100)}%</td>
+          <td>{item.pending_regime ? `${LABELS[item.pending_regime] || item.pending_regime} ${item.pending_days}/${item.pending_required_days}` : '—'}</td><td>{formatPercent(item.sizing_weight * 100)}</td>
         </tr>)}
       </tbody></table></div> : <div style={{ color: 'var(--text-muted)' }}>No persisted regime history yet.</div>}
       {regimeData.evaluation_date && <small style={{ display: 'block', marginTop: '.75rem', color: 'var(--text-dim)' }}>Based on completed daily close {regimeData.evaluation_date} · saved in {regimeData.storage_backend}.</small>}

@@ -18,6 +18,7 @@ import AppearanceControls from './components/AppearanceControls';
 import FontScaleControls from './components/FontScaleControls';
 import ValueBadge from './components/ValueBadge';
 import { playTone, setSoundEnabled } from './utils/soundFx';
+import { formatINR, formatPercent as sharedFormatPercent } from './utils/formatters';
 
 const DEFAULT_THEME = 'codecore';
 
@@ -81,9 +82,7 @@ function readManualPortfolio() {
 }
 
 function formatPrice(value, fallback = '—') {
-  if (value === undefined || value === null || value === '') return fallback;
-  const number = Number(value);
-  return Number.isFinite(number) ? `₹${number.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : value;
+  return formatINR(value, fallback);
 }
 
 function formatCompact(value) {
@@ -113,27 +112,21 @@ function simpleSignalStatus(status) {
 }
 
 function formatPercent(value, providerUsesPercent = false) {
-  const number = Number(value);
-  if (value == null || !Number.isFinite(number)) return '—';
-  return `${(providerUsesPercent ? number : number * 100).toFixed(2)}%`;
+  return sharedFormatPercent(value, { fraction: !providerUsesPercent });
 }
 
 function formatDividendYield(value) {
   const number = Number(value);
   if (value == null || !Number.isFinite(number)) return '—';
   // Yahoo's dividendYield is normally fractional, but some NSE records return percent units.
-  return `${(Math.abs(number) > 0.25 ? number : number * 100).toFixed(2)}%`;
+  return sharedFormatPercent(Math.abs(number) > 0.25 ? number : number * 100);
 }
 
 function formatMoney(value, currency = 'INR') {
   const number = Number(value);
   if (value == null || !Number.isFinite(number)) return '—';
   const safeCurrency = /^[A-Z]{3}$/.test(currency || '') ? currency : 'INR';
-  try {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: safeCurrency, notation: 'compact', maximumFractionDigits: 2 }).format(number);
-  } catch {
-    return `${safeCurrency} ${formatCompact(number)}`;
-  }
+  return safeCurrency === 'INR' ? formatINR(number) : new Intl.NumberFormat('en-IN', { style: 'currency', currency: safeCurrency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
 }
 
 function Sparkline({ positive = true, seed = 1 }) {
@@ -223,12 +216,12 @@ function StockResearchDetails({ data, loading, error }) {
     technicalValue('Last daily close', formatPrice(technical.close)),
     technicalValue('Trend', technical.trend || '—'),
     technicalValue('Average price trend', technical.ema20 != null ? `${formatPrice(technical.ema20)} / ${formatPrice(technical.ema50)} / ${formatPrice(technical.ema200)}` : '—'),
-    technicalValue('Recent price strength', technical.rsi14 != null ? technical.rsi14.toFixed(1) : '—'),
-    technicalValue('Trend strength', technical.adx14 != null ? technical.adx14.toFixed(1) : '—'),
-    technicalValue('Usual daily price movement', technical.atr14_pct != null ? `${technical.atr14_pct}% of price` : '—'),
+    technicalValue('Recent price strength', technical.rsi14 != null ? technical.rsi14.toFixed(2) : '—'),
+    technicalValue('Trend strength', technical.adx14 != null ? technical.adx14.toFixed(2) : '—'),
+    technicalValue('Usual daily price movement', technical.atr14_pct != null ? `${formatPercent(technical.atr14_pct, true)} of price` : '—'),
     technicalValue('Trading activity vs usual', technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'),
-    technicalValue('Price change over 1 and 3 months', technical.return20_pct != null && technical.return63_pct != null ? `${technical.return20_pct}% / ${technical.return63_pct}%` : '—'),
-    technicalValue('Performance vs Nifty', technical.mansfield_rs63 != null ? `${technical.mansfield_rs63 > 0 ? '+' : ''}${technical.mansfield_rs63}%` : '—'),
+    technicalValue('Price change over 1 and 3 months', technical.return20_pct != null && technical.return63_pct != null ? `${formatPercent(technical.return20_pct, true)} / ${formatPercent(technical.return63_pct, true)}` : '—'),
+    technicalValue('Performance vs Nifty', technical.mansfield_rs63 != null ? formatPercent(technical.mansfield_rs63, true) : '—'),
     technicalValue('Data date', technical.as_of || '—'),
   ];
   const currency = fundamentals.currency || 'INR';
@@ -390,7 +383,7 @@ function PortfolioView({ data, loading, saving, storageStatus, saveError, error,
             return <article className="portfolio-card" key={`${item.display_symbol || item.symbol}-${index}`}>
               <div className="portfolio-card-heading"><div><span className="instrument-token">{(item.display_symbol || item.symbol || '?').slice(0, 1)}</span><div><strong>{item.display_symbol || item.symbol}</strong><small>Manual entry · Qty {item.quantity ?? '—'}</small></div></div><div className="portfolio-card-controls"><span className={`portfolio-action ${actionClass}`}>{actionLabel}</span><button type="button" disabled={saving} onClick={() => startEdit(item)}>Edit</button><button type="button" disabled={saving} onClick={() => onDeleteHolding(item.symbol)}>Remove</button></div></div>
               <div className="portfolio-values"><div><span>PRICE TODAY</span><b>{formatPrice(item.last_price)}</b></div><div><span>AVERAGE BUY PRICE</span><b>{formatPrice(item.average_price)}</b></div><div><span>SHARES</span><b>{item.quantity}</b></div><div><span>MONEY INVESTED · EST.</span><b>{formatPrice(item.invested_value)}</b></div><div><span>VALUE TODAY · EST.</span><b>{formatPrice(item.current_value)}</b></div><div><span>GAIN OR LOSS · EST.</span><ValueBadge positive={Number(item.unrealized_pnl) >= 0}>{formatPrice(Math.abs(Number(item.unrealized_pnl) || 0))}</ValueBadge></div></div>
-              {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>20-day average price <b>{formatPrice(analysis.ema20)}</b></span><span>50-day average price <b>{formatPrice(analysis.ema50)}</b></span><span>Recent price strength <b>{analysis.rsi14 ?? '—'}</b></span><span>Price change in 20 days <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{analysis.return20_pct == null ? '—' : `${analysis.return20_pct}%`}</b></span><small>Price date: {analysis.as_of || '—'}</small></div>}
+              {analysis.action !== 'INSUFFICIENT_DATA' && <div className="portfolio-indicators"><span>20-day average price <b>{formatPrice(analysis.ema20)}</b></span><span>50-day average price <b>{formatPrice(analysis.ema50)}</b></span><span>Recent price strength <b>{analysis.rsi14 == null ? '—' : Number(analysis.rsi14).toFixed(2)}</b></span><span>Price change in 20 days <b className={Number(analysis.return20_pct) >= 0 ? 'positive' : 'negative'}>{formatPercent(analysis.return20_pct, true)}</b></span><small>Price date: {analysis.as_of || '—'}</small></div>}
               <ul className="portfolio-reasons">{(analysis.reasons || []).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul>
               <div className={`portfolio-verdict ${actionClass}`}><div><span>SIMPLE TAKEAWAY</span><strong>{actionLabel}</strong></div><p>{analysis.beginner_verdict || 'Is review me agla kadam samajhne ke liye abhi kaafi jaankari nahi hai.'}</p></div>
             </article>;
@@ -440,6 +433,7 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
+    root.dataset.page = activeTab;
     root.dataset.dim = dim;
     root.dataset.grayscale = grayscale ? 'on' : 'off';
     root.dataset.decorativeMotion = decorativeMotion ? 'on' : 'off';
@@ -453,7 +447,7 @@ export default function App() {
       window.localStorage.setItem('marketvoice-motion', String(decorativeMotion));
       window.localStorage.setItem('marketvoice-font-scale', String(fontScale));
     } catch { /* Preferences remain usable for this session when storage is unavailable. */ }
-  }, [theme, dim, grayscale, decorativeMotion, fontScale]);
+  }, [theme, activeTab, dim, grayscale, decorativeMotion, fontScale]);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -729,7 +723,7 @@ export default function App() {
     return matchesSearch && matchesStrategy && matchesQuick;
   }), [allSignals, searchQuery, strategyFilter, quickFilter]);
   const optimalCount = allSignals.filter(signal => signal.regime_status === 'OPTIMAL').length;
-  const avgRR = allSignals.length ? (allSignals.reduce((sum, signal) => sum + (signal.risk_reward || 0), 0) / allSignals.length).toFixed(1) : '—';
+  const avgRR = allSignals.length ? (allSignals.reduce((sum, signal) => sum + (signal.risk_reward || 0), 0) / allSignals.length).toFixed(2) : '—';
   const metrics = regimeData?.metrics || {};
   const liveChange = liveQuote?.change_pct;
   const quoteFresh = liveQuote?.tick_at && Date.now() - Date.parse(liveQuote.tick_at) < 10000;
@@ -746,7 +740,7 @@ export default function App() {
   const istToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   const iiflQuoteIsToday = Boolean(liveQuote?.tick_at && liveQuote.tick_at.slice(0, 10) === istToday);
   const displayedNiftyPrice = isMarketOpen && hasLiveQuote ? liveQuote.price : iiflQuoteIsToday ? liveQuote.price : metrics.nifty_close ?? liveQuote?.price;
-  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : activeTab === 'settings' ? 'Settings' : 'Test a strategy';
+  const marketName = activeTab === 'screener' ? 'Overview' : activeTab === 'history' ? 'History' : activeTab === 'flow-watch' ? 'Buying & selling' : activeTab === 'stock-analysis' ? 'Stock analysis' : activeTab === 'regime' ? 'Market mood' : activeTab === 'portfolio' ? 'Portfolio' : activeTab === 'intraday' ? 'Intraday' : activeTab === 'options' ? 'Options' : activeTab === 'settings' ? 'Settings' : activeTab === 'help' ? 'Help' : 'Test a strategy';
 
   const selectTab = id => {
     setActiveTab(id);
@@ -755,7 +749,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const handleCopySetup = signal => {
-    const text = `SWING SETUP · ${signal.symbol}\nStatus: ${signal.trade_status || 'Review setup'}\nEntry: ₹${signal.entry_price}\nStop: ₹${signal.stop_loss}\nTarget 1: ₹${signal.target_1}\nTarget 2: ₹${signal.target_2}\nRisk/reward: 1:${signal.risk_reward}\nStrategy: ${signal.strategy_title}`;
+    const text = `SWING SETUP · ${signal.symbol}\nStatus: ${signal.trade_status || 'Review setup'}\nEntry: ${formatPrice(signal.entry_price)}\nStop: ${formatPrice(signal.stop_loss)}\nTarget 1: ${formatPrice(signal.target_1)}\nTarget 2: ${formatPrice(signal.target_2)}\nRisk/reward: 1:${Number(signal.risk_reward || 0).toFixed(2)}\nStrategy: ${signal.strategy_title}`;
     navigator.clipboard?.writeText(text);
     setCopiedSymbol(signal.symbol);
     playTone('blip');
@@ -776,24 +770,24 @@ export default function App() {
       <div className="nav-group-label">WORKSPACE</div>
       <nav className="side-nav" aria-label="Primary navigation">
         {navigation.map(({ id, label, icon: Icon }) => <button key={id} className={`side-nav-item ${activeTab === id ? 'selected' : ''}`} onClick={() => selectTab(id)} title={label}>
-          <Icon size={18} strokeWidth={1.8} /><span>{label}</span>{id === 'screener' && <i className="nav-count">{filteredSignals.length}</i>}
+          <Icon size={22} strokeWidth={1.8} /><span>{label}</span>{id === 'screener' && <i className="nav-count">{filteredSignals.length}</i>}
         </button>)}
       </nav>
       <div className="rail-divider rail-lower" />
       <div className="nav-group-label">MARKETS</div>
       <nav className="side-nav">
         {marketNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={`side-nav-item ${activeTab === id ? 'selected' : ''}`} onClick={() => selectTab(id)} title={label}>
-          <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
+          <Icon size={22} strokeWidth={1.8} /><span>{label}</span>
         </button>)}
       </nav>
       <div className="rail-divider rail-lower" />
       <nav className="side-nav" aria-label="Settings navigation">
         {settingsNavigation.map(({ id, label, icon: Icon }) => <button key={id} className={`side-nav-item ${activeTab === id ? 'selected' : ''}`} onClick={() => selectTab(id)} title={label}>
-          <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
+          <Icon size={22} strokeWidth={1.8} /><span>{label}</span>
         </button>)}
       </nav>
       <div className="rail-spacer" />
-      <button className="side-nav-item support-item" onClick={() => showToast('Help center coming soon', 'info')}><CircleHelp size={18} /><span>Help & support</span></button>
+      <button className={`side-nav-item support-item ${activeTab === 'help' ? 'selected' : ''}`} onClick={() => selectTab('help')}><CircleHelp size={22} /><span>Help & support</span></button>
       <button className="profile-button" aria-label="Account settings" onClick={() => showToast('Account settings coming soon', 'info')}><span className="avatar">A</span><span className="profile-copy"><b>Analyst</b><small>Personal workspace</small></span><MoreHorizontal size={17} /></button>
     </aside>
 
@@ -839,14 +833,14 @@ export default function App() {
               </div>
             <div className="hero-regime-summary">
                 <div><small>Market mood</small><strong className={`regime-badge state-${regimeClass(regimeData?.regime || regimeData?.confirmed_regime)}`}><span aria-hidden="true">{regimeMarker(regimeData?.regime || regimeData?.confirmed_regime)}</span>{regimeData?.title || 'Checking the market'}</strong></div>
-                <span title="Based on recent daily prices for a sample of shares">{metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}% of tracked shares are above their 50-day average` : 'Share trend data unavailable'}<br />{metrics.rsi_14 != null ? `Nifty price strength ${metrics.rsi_14}/100` : 'Nifty price strength —'}</span>
+                <span title="Based on recent daily prices for a sample of shares">{metrics.breadth_above_50ema_pct != null ? `${formatPercent(metrics.breadth_above_50ema_pct, true)} of tracked shares are above their 50-day average` : 'Share trend data unavailable'}<br />{metrics.rsi_14 != null ? `Nifty price strength ${Number(metrics.rsi_14).toFixed(2)}/100` : 'Nifty price strength —'}</span>
               </div>
             </button>
           </section>
 
           <section className="market-strip" aria-label="Market snapshot">
-            <MetricCard label="NIFTY 50" value={displayedNiftyPrice != null ? Number(displayedNiftyPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'} change={isMarketOpen && liveQuote ? `${liveChange > 0 ? '+' : ''}${liveChange}% today` : 'Day-end close'} positive={isMarketOpen && liveQuote ? liveChange >= 0 : null} icon={LineChart} note={isMarketOpen ? liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : 'Waiting for IIFL live quote' : iiflQuoteIsToday ? `IIFL last quote · ${liveQuoteTime || ''} IST` : 'Latest daily close · Yahoo Finance'} tone="lilac" />
-            <MetricCard label="Tracked shares above average" value={metrics.breadth_above_50ema_pct != null ? `${metrics.breadth_above_50ema_pct}%` : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'More than half' : 'Fewer than half'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="Compared with their 50-day average" tone="mint" />
+            <MetricCard label="NIFTY 50" value={displayedNiftyPrice != null ? formatPrice(displayedNiftyPrice) : '—'} change={isMarketOpen && liveQuote ? `${formatPercent(liveChange, true)} today` : 'Day-end close'} positive={isMarketOpen && liveQuote ? liveChange >= 0 : null} icon={LineChart} note={isMarketOpen ? liveQuote ? `${quoteFresh ? 'IIFL live' : 'IIFL last update'} · ${liveQuote.tick_time || liveQuote.received_at}` : 'Waiting for IIFL live quote' : iiflQuoteIsToday ? `IIFL last quote · ${liveQuoteTime || ''} IST` : 'Latest daily close · Yahoo Finance'} tone="lilac" />
+            <MetricCard label="Tracked shares above average" value={metrics.breadth_above_50ema_pct != null ? formatPercent(metrics.breadth_above_50ema_pct, true) : '—'} change={metrics.breadth_above_50ema_pct == null ? 'Unavailable' : metrics.breadth_above_50ema_pct >= 50 ? 'More than half' : 'Fewer than half'} positive={metrics.breadth_above_50ema_pct == null ? null : metrics.breadth_above_50ema_pct >= 50} icon={Activity} note="Compared with their 50-day average" tone="mint" />
             <MetricCard label="Shares to review" value={loading && !screenerData ? '…' : filteredSignals.length} change={`${optimalCount} fit the market mood`} positive={optimalCount > 0} icon={Target} note={`Typical possible gain vs loss: 1:${avgRR}`} tone="peach" />
             <button className="regime-card" onClick={() => selectTab('regime')}>
               <span className={`regime-badge state-${regimeClass(regimeData?.regime || regimeData?.confirmed_regime)}`}><span aria-hidden="true">{regimeMarker(regimeData?.regime || regimeData?.confirmed_regime)}</span>{regimeData?.title || 'Checking the market'}</span><span className="regime-copy"><span className="regime-label">Market mood</span><span>{regimeData?.recommended_action || 'Market summary updates with each scan'}</span></span><ArrowUpRight size={18} className="regime-link" aria-hidden="true" />
@@ -854,7 +848,7 @@ export default function App() {
           </section>
 
           <section className="insight-banner">
-            <div className="banner-glow" /><div className="banner-icon"><Sparkles size={18} /></div><div className="banner-copy"><span>MARKET SUMMARY <i /> {isMarketOpen ? 'LIVE SESSION' : 'LATEST SESSION'}</span><strong>{regimeData?.description || 'Your share market workspace is ready.'}</strong><small>Suggested money in shares <b>{regimeData?.max_capital_exposure_pct ?? '—'}%</b><span className="banner-separator">·</span>Nifty price strength <b>{metrics.rsi_14 ?? '—'}/100</b><span className="banner-separator">·</span>Usual daily Nifty move <b>{metrics.atr_pct != null ? `${metrics.atr_pct}%` : '—'}</b></small></div><button className="banner-action" onClick={() => selectTab('regime')}>See market mood <ArrowUpRight size={15} /></button>
+            <div className="banner-glow" /><div className="banner-icon"><Sparkles size={18} /></div><div className="banner-copy"><span>MARKET SUMMARY <i /> {isMarketOpen ? 'LIVE SESSION' : 'LATEST SESSION'}</span><strong>{regimeData?.description || 'Your share market workspace is ready.'}</strong><small>Suggested money in shares <b>{formatPercent(regimeData?.max_capital_exposure_pct, true)}</b><span className="banner-separator">·</span>Nifty price strength <b>{metrics.rsi_14 == null ? '—' : Number(metrics.rsi_14).toFixed(2)}/100</b><span className="banner-separator">·</span>Usual daily Nifty move <b>{formatPercent(metrics.atr_pct, true)}</b></small></div><button className="banner-action" onClick={() => selectTab('regime')}>See market mood <ArrowUpRight size={15} /></button>
           </section>
 
             <section className="setups-section">
@@ -862,7 +856,7 @@ export default function App() {
             <div className="history-horizon-bar"><span>Stop tracking a share after</span><select value={historyHoldingDays} onChange={event => setHistoryHoldingDays(Number(event.target.value))} aria-label="Stop tracking after this many market days"><option value={15}>15 market days</option><option value={30}>30 market days</option></select><small>This applies to shares added by future scans.</small></div>
             <div className="filter-row"><span>SHOW</span>{[['ALL', `All ${allSignals.length}`], ['OPTIMAL', `Fits market mood ${optimalCount}`], ['HIGH_RR', 'Possible gain is at least 2× the loss'], ['HIGH_CONVICTION', 'Many checks agree']].map(([id, label]) => <button key={id} className={`filter-pill ${quickFilter === id ? 'active' : ''}`} onClick={() => setQuickFilter(id)}>{quickFilter === id && <Check size={13} />}{label}</button>)}<span className="scan-time"><span className="scan-time-dot" />Updated {screenerData?.timestamp || 'just now'}</span></div>
 
-            {loading ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Checking shares</strong><span>Looking for shares that match your choices…</span></div> : filteredSignals.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Search size={19} /></div><strong>{allSignals.length ? 'No shares match these choices' : 'No shares to show yet'}</strong><span>{allSignals.length ? 'Try a different name or choice.' : 'Check the market again to find shares.'}</span>{!allSignals.length && <button className="text-action" onClick={() => runScreener(true)}>Check market <ArrowUpRight size={14} /></button>}</div> : viewMode === 'table' ? <div className="table-shell"><div className="table-scroll"><table className="setups-table swing-table"><thead><tr><th>SHARE</th><th>WHY IT APPEARED</th><th>PRICE CHANGE</th><th>PRICE TO REVIEW</th><th>EXIT IF IT FALLS TO</th><th>POSSIBLE GAIN PRICE</th><th>POSSIBLE GAIN VS LOSS</th><th>CHECK SCORE</th><th aria-label="Actions" /></tr></thead><tbody>{filteredSignals.map((signal, index) => { const positive = signal.change_pct >= 0; const isCopied = copiedSymbol === signal.symbol; return <tr key={`${signal.symbol}-${index}`} className="setup-row"><td><button type="button" className="instrument-open" onClick={() => setSelectedChartTrade(signal)}><span className="instrument-token">{signal.symbol.slice(0, 1)}</span><span><b>{signal.symbol}</b><small>{simpleSignalStatus(signal.trade_status) || (signal.regime_status === 'OPTIMAL' ? 'Fits the current market mood' : simpleStrategyName(signal.strategy, signal.strategy_title))}</small></span></button></td><td><span className="strategy-tag">{simpleStrategyName(signal.strategy, signal.strategy_title)}</span></td><td><span className={`move-value ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{positive ? '+' : ''}{signal.change_pct}% <strong>{positive ? 'GAIN' : 'LOSS'}</strong></span></td><td className="numeric-cell">{formatPrice(signal.entry_price)}</td><td className="numeric-cell stop-value">{formatPrice(signal.stop_loss)}</td><td className="numeric-cell target-value">{formatPrice(signal.target_1)}</td><td><span className="rr-badge">{signal.risk_reward} to 1</span></td><td><div className="confidence"><span className="confidence-track"><i style={{ width: `${Math.min(100, signal.confidence_score || 0)}%` }} /></span><b>{signal.confidence_score ?? '—'}%</b></div></td><td><button className="row-action" title="Copy setup" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}>{isCopied ? <Check size={15} /> : <Copy size={15} />}</button></td></tr>; })}</tbody></table></div><div className="table-footer"><span><b>{filteredSignals.length}</b> shares shown</span><span>Prices use the latest available market information</span></div></div> : <div className="setup-grid">{filteredSignals.map((signal, index) => <article className="setup-card" key={`${signal.symbol}-${index}`}><div className="setup-card-top"><span className="instrument-token large-token">{signal.symbol.slice(0, 1)}</span><span className={`move-value ${signal.change_pct >= 0 ? 'positive' : 'negative'}`}>{signal.change_pct >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{signal.change_pct >= 0 ? '+' : ''}{signal.change_pct}% <strong>{signal.change_pct >= 0 ? 'GAIN' : 'LOSS'}</strong></span></div><h3>{signal.symbol}</h3><p className="setup-strategy">{simpleStrategyName(signal.strategy, signal.strategy_title)}</p><div className="card-prices"><div><span>PRICE TO REVIEW</span><b>{formatPrice(signal.entry_price)}</b></div><div><span>EXIT IF IT FALLS TO</span><b className="stop-value">{formatPrice(signal.stop_loss)}</b></div><div><span>POSSIBLE GAIN PRICE</span><b className="target-value">{formatPrice(signal.target_1)}</b></div></div><div className="card-score"><span>CHECK SCORE</span><strong>{signal.confidence_score ?? '—'}%</strong></div><details className="setup-card-details"><summary>More setup details</summary><p>{signal.regime_status === 'OPTIMAL' ? 'Fits the current market mood.' : 'Review the setup alongside current market conditions.'}</p><ul>{(signal.reasons || []).slice(0, 3).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul></details><div className="card-end"><span className="rr-badge">{signal.risk_reward} to 1 possible gain vs loss</span><button type="button" className="secondary-button" onClick={() => setSelectedChartTrade(signal)}>View setup</button><button className="text-action" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}><Copy size={14} /> Copy plan</button></div></article>)}</div>}
+            {loading ? <div className="empty-panel"><div className="loader-orb"><RefreshCw size={20} /></div><strong>Checking shares</strong><span>Looking for shares that match your choices…</span></div> : filteredSignals.length === 0 ? <div className="empty-panel"><div className="empty-icon"><Search size={19} /></div><strong>{allSignals.length ? 'No shares match these choices' : 'No shares to show yet'}</strong><span>{allSignals.length ? 'Try a different name or choice.' : 'Check the market again to find shares.'}</span>{!allSignals.length && <button className="text-action" onClick={() => runScreener(true)}>Check market <ArrowUpRight size={14} /></button>}</div> : viewMode === 'table' ? <div className="table-shell"><div className="table-scroll"><table className="setups-table swing-table"><thead><tr><th>SHARE</th><th>WHY IT APPEARED</th><th>PRICE CHANGE</th><th>PRICE TO REVIEW</th><th>EXIT IF IT FALLS TO</th><th>POSSIBLE GAIN PRICE</th><th>POSSIBLE GAIN VS LOSS</th><th>CHECK SCORE</th><th aria-label="Actions" /></tr></thead><tbody>{filteredSignals.map((signal, index) => { const positive = signal.change_pct >= 0; const isCopied = copiedSymbol === signal.symbol; return <tr key={`${signal.symbol}-${index}`} className="setup-row"><td><button type="button" className="instrument-open" onClick={() => setSelectedChartTrade(signal)}><span className="instrument-token">{signal.symbol.slice(0, 1)}</span><span><b>{signal.symbol}</b><small>{simpleSignalStatus(signal.trade_status) || (signal.regime_status === 'OPTIMAL' ? 'Fits the current market mood' : simpleStrategyName(signal.strategy, signal.strategy_title))}</small></span></button></td><td><span className="strategy-tag">{simpleStrategyName(signal.strategy, signal.strategy_title)}</span></td><td><span className={`move-value ${positive ? 'positive' : 'negative'}`}>{positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{formatPercent(signal.change_pct, true)} <strong>{positive ? 'GAIN' : 'LOSS'}</strong></span></td><td className="numeric-cell">{formatPrice(signal.entry_price)}</td><td className="numeric-cell stop-value">{formatPrice(signal.stop_loss)}</td><td className="numeric-cell target-value">{formatPrice(signal.target_1)}</td><td><span className="rr-badge">{signal.risk_reward} to 1</span></td><td><div className="confidence"><span className="confidence-track"><i style={{ width: `${Math.min(100, signal.confidence_score || 0)}%` }} /></span><b>{formatPercent(signal.confidence_score, true)}</b></div></td><td><button className="row-action" title="Copy setup" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}>{isCopied ? <Check size={15} /> : <Copy size={15} />}</button></td></tr>; })}</tbody></table></div><div className="table-footer"><span><b>{filteredSignals.length}</b> shares shown</span><span>Prices use the latest available market information</span></div></div> : <div className="setup-grid">{filteredSignals.map((signal, index) => <article className="setup-card" key={`${signal.symbol}-${index}`}><div className="setup-card-top"><span className="instrument-token large-token">{signal.symbol.slice(0, 1)}</span><span className={`move-value ${signal.change_pct >= 0 ? 'positive' : 'negative'}`}>{signal.change_pct >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{formatPercent(signal.change_pct, true)} <strong>{signal.change_pct >= 0 ? 'GAIN' : 'LOSS'}</strong></span></div><h3>{signal.symbol}</h3><p className="setup-strategy">{simpleStrategyName(signal.strategy, signal.strategy_title)}</p><div className="card-prices"><div><span>PRICE TO REVIEW</span><b>{formatPrice(signal.entry_price)}</b></div><div><span>EXIT IF IT FALLS TO</span><b className="stop-value">{formatPrice(signal.stop_loss)}</b></div><div><span>POSSIBLE GAIN PRICE</span><b className="target-value">{formatPrice(signal.target_1)}</b></div></div><div className="card-score"><span>CHECK SCORE</span><strong>{formatPercent(signal.confidence_score, true)}</strong></div><details className="setup-card-details"><summary>More setup details</summary><p>{signal.regime_status === 'OPTIMAL' ? 'Fits the current market mood.' : 'Review the setup alongside current market conditions.'}</p><ul>{(signal.reasons || []).slice(0, 3).map((reason, reasonIndex) => <li key={reasonIndex}>{reason}</li>)}</ul></details><div className="card-end"><span className="rr-badge">{signal.risk_reward} to 1 possible gain vs loss</span><button type="button" className="secondary-button" onClick={() => setSelectedChartTrade(signal)}>View setup</button><button className="text-action" onClick={event => { event.stopPropagation(); handleCopySetup(signal); }}><Copy size={14} /> Copy plan</button></div></article>)}</div>}
           </section>
           <footer className="page-footer"><span><ShieldCheck size={14} /> Research tools for informed decisions</span><span>Data may be delayed. Verify before trading.</span></footer>
         </>}
@@ -875,6 +869,7 @@ export default function App() {
         {activeTab === 'options' && <TradingStrategiesView mode="options" connected={Boolean(liveStatus?.authenticated)} onConnect={() => window.location.assign('/api/market/live/login')} />}
         {activeTab === 'regime' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKET CONTEXT</div><h1>Market mood</h1><p>See whether the overall market looks strong, weak or mixed.</p></div><button className="secondary-button" onClick={() => selectTab('screener')}>Back to overview</button></div><RegimeView regimeData={regimeData} onSelectStrategy={id => { setStrategyFilter(id); selectTab('screener'); }} /></section>}
         {activeTab === 'backtest' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">LEARN FROM PAST PRICES</div><h1>Test a strategy</h1><p>See how a share-picking idea would have worked on older prices.</p></div><span className="research-badge"><BookOpen size={14} /> Learning tool</span></div><BacktestLab /></section>}
+        {activeTab === 'help' && <section className="module-page"><div className="module-heading"><div><div className="eyebrow subtle-eyebrow">MARKETVOICE GUIDE</div><h1>Help &amp; support</h1><p>Quick guidance for using the market research workspace.</p></div></div><div className="glass-card help-card"><h2>Using MarketVoice</h2><p>Use Overview to review swing setups, Market mood to see the current regime, and the research pages to examine individual shares and market activity.</p><p>Every signal is a research prompt. Check the source data, prices, and risk before making a decision.</p><button className="secondary-button" onClick={() => selectTab('settings')}><Settings size={18} /> Open display settings</button></div></section>}
         {activeTab === 'settings' && <section className="module-page settings-page">
           <div className="module-heading"><div><div className="eyebrow subtle-eyebrow">PERSONALIZE MARKETVOICE</div><h1>Settings</h1><p>Adjust the theme, brightness, text size, and accessibility previews.</p></div></div>
           <div className="settings-grid">
@@ -902,7 +897,7 @@ export default function App() {
           <Wallet size={19} />
           <span>Portfolio</span>
         </button>
-        <button className={`bottom-nav-item ${mobileMenuOpen || ['history', 'flow-watch', 'stock-analysis', 'regime', 'backtest', 'settings'].includes(activeTab) ? 'active' : ''}`} onClick={() => setMobileMenuOpen(true)}>
+        <button className={`bottom-nav-item ${mobileMenuOpen || ['history', 'flow-watch', 'stock-analysis', 'regime', 'backtest', 'settings', 'help'].includes(activeTab) ? 'active' : ''}`} onClick={() => setMobileMenuOpen(true)}>
           <Menu size={19} />
           <span>Menu</span>
         </button>
@@ -922,7 +917,7 @@ export default function App() {
           <div><span>STOP LOSS</span><b className="stop-value">{formatPrice(selectedChartTrade.stop_loss)}</b></div>
           <div><span>TARGET 1</span><b className="target-value">{formatPrice(selectedChartTrade.target_1)}</b></div>
           <div><span>TARGET 2</span><b className="target-value">{formatPrice(selectedChartTrade.target_2)}</b></div>
-          <div><span>RISK / SHARE</span><b>{formatPrice(selectedChartTrade.risk_per_share)} <small>({selectedChartTrade.risk_pct}%)</small></b></div>
+          <div><span>RISK / SHARE</span><b>{formatPrice(selectedChartTrade.risk_per_share)} <small>({formatPercent(selectedChartTrade.risk_pct, true)})</small></b></div>
         </div>
         {selectedChartTrade.score_label && <div className="setup-rationale"><span>SETUP SCORE</span><p>{selectedChartTrade.score_label}. This score is a checklist result, not a probability or guarantee.</p></div>}
         {selectedChartTrade.reasons?.length > 0 && <div className="setup-rationale"><span>WHY THIS SETUP</span><ul>{selectedChartTrade.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul></div>}

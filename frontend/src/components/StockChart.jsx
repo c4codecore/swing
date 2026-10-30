@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Layers, Activity, TrendingUp, Calendar, Zap } from 'lucide-react';
 import { playTone } from '../utils/soundFx';
+import { formatINR, formatNumber } from '../utils/formatters';
 
 export default function StockChart({ symbol, tradePlan }) {
   const [data, setData] = useState(null);
@@ -175,10 +176,10 @@ export default function StockChart({ symbol, tradePlan }) {
           </div>
 
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '0.75rem' }}>
-            <span>Open: <b style={{ color: '#fff' }}>₹{activeCandle?.open}</b></span>
-            <span>High: <b style={{ color: '#fff' }}>₹{activeCandle?.high}</b></span>
-            <span>Low: <b style={{ color: '#fff' }}>₹{activeCandle?.low}</b></span>
-            <span>Close: <b style={{ color: isCandleGreen ? '#10b981' : '#f43f5e' }}>₹{activeCandle?.close}</b></span>
+            <span>Open: <b>{formatINR(activeCandle?.open)}</b></span>
+            <span>High: <b>{formatINR(activeCandle?.high)}</b></span>
+            <span>Low: <b>{formatINR(activeCandle?.low)}</b></span>
+            <span>Close: <b>{formatINR(activeCandle?.close)} {isCandleGreen ? '▲ GAIN' : '▼ LOSS'}</b></span>
             {activeCandle?.volume && <span>Shares traded: <b style={{ color: '#94a3b8' }}>{(activeCandle.volume / 1000).toFixed(0)}k</b></span>}
           </div>
         </div>
@@ -250,7 +251,7 @@ export default function StockChart({ symbol, tradePlan }) {
               <g key={i}>
                 <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
                 <text x={width - padding.right + 6} y={y + 3} fill="#cbd5e1" fontSize="9.5" fontWeight="600" fontFamily="var(--font-mono)">
-                  ₹{gridP.toFixed(0)}
+                  {formatINR(gridP)}
                 </text>
               </g>
             );
@@ -348,8 +349,8 @@ export default function StockChart({ symbol, tradePlan }) {
           )}
 
           {/* EMA Lines */}
-          {ema50Points && <polyline points={ema50Points} fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeOpacity="0.85" />}
-          {ema20Points && <polyline points={ema20Points} fill="none" stroke="#38bdf8" strokeWidth="2.0" strokeOpacity="0.95" />}
+          {ema50Points && <polyline points={ema50Points} fill="none" stroke="var(--cc-violet, #a78bfa)" strokeWidth="2.0" strokeDasharray="7 4" strokeOpacity="0.9" />}
+          {ema20Points && <polyline points={ema20Points} fill="none" stroke="var(--page-accent, #38bdf8)" strokeWidth="2.4" strokeOpacity="0.95" />}
 
           {/* Candlesticks */}
           {data.map((d, i) => {
@@ -453,7 +454,7 @@ export default function StockChart({ symbol, tradePlan }) {
               {/* Price Badge on Y-Axis */}
               <rect x={width - padding.right} y={mouseY - 8} width="66" height="16" fill="#38bdf8" rx="3" />
               <text x={width - padding.right + 6} y={mouseY + 3.5} fill="#040711" fontSize="9" fontWeight="800" fontFamily="var(--font-mono)">
-                ₹{cursorPrice.toFixed(1)}
+                {formatINR(cursorPrice)}
               </text>
             </g>
           )}
@@ -464,16 +465,16 @@ export default function StockChart({ symbol, tradePlan }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: '#cbd5e1', fontWeight: 600, flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span style={{ width: 12, height: 2, background: '#38bdf8', display: 'inline-block' }}></span>
-            <span style={{ color: '#38bdf8' }}>20-day average price</span>
+            <span style={{ width: 16, height: 3, background: 'var(--page-accent, #38bdf8)', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>20-day average price</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span style={{ width: 12, height: 2, background: '#f59e0b', display: 'inline-block' }}></span>
-            <span style={{ color: '#f59e0b' }}>50-day average price</span>
+            <span style={{ width: 16, height: 3, background: 'var(--cc-violet, #a78bfa)', display: 'inline-block', borderTop: '1px dashed var(--bg)' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>50-day average price</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span style={{ width: 12, height: 2, background: '#a855f7', display: 'inline-block' }}></span>
-            <span style={{ color: '#a855f7' }}>Recent price strength: {activeCandle?.rsi ?? '-'}</span>
+            <span style={{ width: 16, height: 3, background: 'var(--cc-cyan, #22d3ee)', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>Recent price strength: {activeCandle?.rsi == null ? '—' : formatNumber(activeCandle.rsi)}</span>
           </span>
         </div>
         <div>

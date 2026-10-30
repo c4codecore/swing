@@ -152,7 +152,9 @@ def classify_raw_regime(metrics: Dict[str, float], breadth: Optional[Dict[str, A
     return ("SIDEWAYS_CHOPPY", "CATCH_ALL_SIDEWAYS_CHOPPY") if include_rule else "SIDEWAYS_CHOPPY"
 
 
-def advance_hysteresis(raw_state: str, previous: Optional[Dict[str, Any]], *, is_new_day: bool = True) -> Dict[str, Any]:
+def advance_hysteresis(raw_state: str, previous: Optional[Dict[str, Any]], *, is_new_day: bool = True,
+                       metrics: Optional[Dict[str, Any]] = None,
+                       breadth: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Advance daily confirmation state; same-day refreshes never add a streak day."""
     if previous is None:
         return {
@@ -170,6 +172,24 @@ def advance_hysteresis(raw_state: str, previous: Optional[Dict[str, Any]], *, is
             "pending_regime": pending, "pending_days": pending_days,
             "pending_required_days": required,
         }
+    if (config.REGIME_BEARISH_EXIT_GUARD_ENABLED
+            and confirmed == "BEARISH_CORRECTION"
+            and raw_state not in RISK_OFF_STATES):
+        close_above_ema50 = bool(
+            metrics and metrics.get("nifty_close") is not None
+            and metrics.get("ema_50") is not None
+            and metrics["nifty_close"] > metrics["ema_50"]
+        )
+        breadth_recovered = bool(
+            _breadth_available(breadth)
+            and breadth["pct_above_50ema"] > config.REGIME_BEARISH_EXIT_BREADTH_MIN
+        )
+        if not (close_above_ema50 or breadth_recovered):
+            return {
+                "confirmed_regime": confirmed, "days_in_state": days_in_state + 1,
+                "pending_regime": raw_state, "pending_days": 0,
+                "pending_required_days": config.REGIME_RISK_OFF_EXIT_DAYS,
+            }
     if raw_state == confirmed:
         return {
             "confirmed_regime": confirmed, "days_in_state": days_in_state + 1,
@@ -206,7 +226,7 @@ def _state_copy(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def calculate_market_breadth(symbols: Optional[Iterable[str]] = None, *, as_of: Optional[datetime] = None,
                              daily_data: Optional[Dict[str, pd.DataFrame]] = None) -> Dict[str, Any]:
-    """Calculate breadth only after the shared Phase 2 liquidity/listing filter."""
+    """Calculate breadth only after the shared liquidity and listing filters."""
     sample_symbols = list(dict.fromkeys(symbols or get_screening_universe()[0]))
     frames = dict(daily_data or {})
     missing = [symbol for symbol in sample_symbols if symbol not in frames]
@@ -336,7 +356,7 @@ def _process_new_daily_closes(
             metrics = compute_regime_metrics(daily_to_day)
             breadth = {"status": "unavailable", "universe_size": 0, "pct_above_50ema": None}
         raw, matching_rule = classify_raw_regime(metrics, breadth, include_rule=True)
-        state = advance_hysteresis(raw, state, is_new_day=True)
+        state = advance_hysteresis(raw, state, is_new_day=True, metrics=metrics, breadth=breadth)
         snapshot = _snapshot(day, raw, metrics, breadth, state, matching_rule)
         backend = save_regime_snapshot(snapshot)
         raw_today = raw
@@ -360,7 +380,7 @@ def bootstrap_regime_history(
             "status": "unavailable", "universe_size": 0, "pct_above_50ema": None,
         }
         raw, matching_rule = classify_raw_regime(metrics, breadth, include_rule=True)
-        state = advance_hysteresis(raw, state, is_new_day=True)
+        state = advance_hysteresis(raw, state, is_new_day=True, metrics=metrics, breadth=breadth)
         backend = save_regime_snapshot(_snapshot(evaluated_on, raw, metrics, breadth, state, matching_rule))
         raw_today = raw
     if state is None:
@@ -433,11 +453,13 @@ def analyze_market_regime() -> Dict[str, Any]:
         "pending_required_days": state.get("pending_required_days", 0),
         **presentation,
         "sizing_weight": presentation["sizing_weight"],
-        "sizing_weight_note": "Risk-scaling default, not a tested optimum. The backtester will evaluate these weights in Phase 7.",
+        "sizing_weight_note": "Default risk setting. It has not been tested against past data.",
         "allowed_strategies": active,
         "active_strategies": active,
         "skipped_strategies": skipped,
         "strategy_gating_enabled": config.REGIME_STRATEGY_GATING_ENABLED,
+        "bearish_exit_guard_enabled": config.REGIME_BEARISH_EXIT_GUARD_ENABLED,
+        "bearish_exit_breadth_min": config.REGIME_BEARISH_EXIT_BREADTH_MIN,
         "breadth": breadth, "warnings": warnings,
         "data_status": breadth.get("data_status", "complete" if breadth["status"] == "available" else "partial"),
         "storage_backend": backend,

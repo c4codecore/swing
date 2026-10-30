@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, RefreshCw, Search, ShieldAlert } from 'lucide-react';
 import StockChart from './StockChart';
+import { formatINR, formatNumber, formatPercent } from '../utils/formatters';
+
+const POPULAR_SYMBOLS = ['RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'BHARTIARTL', 'SBIN', 'LT'];
 
 function price(value) {
-  const number = Number(value);
-  return value == null || !Number.isFinite(number)
-    ? '—'
-    : `₹${number.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatINR(value);
 }
 
 function percent(value) {
-  return value == null || !Number.isFinite(Number(value)) ? '—' : `${Number(value) > 0 ? '+' : ''}${value}%`;
+  return formatPercent(value, { signed: true });
 }
 
 function toneText(tone) {
@@ -59,6 +59,7 @@ export default function StockAnalysisView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [recentSymbols, setRecentSymbols] = useState([]);
   const symbols = useMemo(() => stocks.map(stock => stock.symbol), [stocks]);
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export default function StockAnalysisView() {
 
   const matches = useMemo(() => {
     const needle = query.trim().toUpperCase().replace(/\.NS$/, '');
-    return needle ? stocks.filter(stock => stock.symbol.includes(needle) || stock.name.toUpperCase().includes(needle)) : stocks;
+    return needle ? stocks.filter(stock => stock.symbol.replace(/\.NS$/, '').includes(needle) || stock.name.toUpperCase().includes(needle)).slice(0, 8) : [];
   }, [query, stocks]);
 
   const loadAnalysis = async rawSymbol => {
@@ -88,6 +89,7 @@ export default function StockAnalysisView() {
     if (!symbols.includes(symbol)) { setError('Choose a company or symbol from the NSE list.'); return; }
     setQuery(symbol);
     setSelectedSymbol(symbol);
+    setRecentSymbols(current => [symbol, ...current.filter(item => item !== symbol)].slice(0, 5));
     setLoading(true);
     setData(null);
     setError(null);
@@ -128,7 +130,7 @@ export default function StockAnalysisView() {
       : technical.atr14_pct >= 2.5 ? 'Price moves a moderate amount in one day' : 'Price usually moves less in one day';
   const fundamentalRead = fundamentals.status === 'unavailable' ? 'Company details are unavailable'
     : fundamentals.trailing_pe != null && fundamentals.return_on_equity != null
-      ? `Price vs earnings: ${Number(fundamentals.trailing_pe).toFixed(1)} · profit on shareholder money: ${percent(fundamentals.return_on_equity * 100)}`
+      ? `Price vs earnings: ${Number(fundamentals.trailing_pe).toFixed(2)} · profit on shareholder money: ${percent(fundamentals.return_on_equity * 100)}`
       : 'Some company details are unavailable';
   const simpleTrend = technical.trend === 'Bullish alignment' ? 'Price is above its short- and long-term averages'
     : technical.trend === 'Above EMA 50' ? 'Price is above its 50-day average'
@@ -153,14 +155,20 @@ export default function StockAnalysisView() {
     <form className="stock-analysis-search" onSubmit={analyze}>
       <label htmlFor="stock-analysis-symbol">Find a stock</label>
       <div className="stock-analysis-search-row">
-        <div className="stock-analysis-input-wrap"><Search size={17} /><input id="stock-analysis-symbol" value={query} onChange={event => { setQuery(event.target.value); setError(null); }} placeholder="Search company or symbol, e.g. IRCTC" autoComplete="off" /></div>
+        <div className="stock-analysis-input-wrap"><Search size={22} /><input id="stock-analysis-symbol" value={query} onChange={event => { setQuery(event.target.value); setError(null); }} placeholder="Search company or symbol, e.g. IRCTC" autoComplete="off" aria-controls="stock-analysis-suggestions" aria-expanded={Boolean(query.trim() && matches.length)} /></div>
         <button className="primary-button" type="submit" disabled={loading || !symbols.length}>{loading ? <RefreshCw size={15} className="spin" /> : <Search size={15} />}{loading ? 'Analyzing' : 'Analyze stock'}</button>
       </div>
       <small>Search by company name or stock code. {symbols.length ? `${symbols.length.toLocaleString('en-IN')} NSE-listed stocks` : 'Loading NSE stock list'} are available.</small>
-      <div className="stock-symbol-list" aria-label="Supported NSE stock symbols">
-        {matches.map(stock => <button key={stock.symbol} type="button" className={selectedSymbol === stock.symbol ? 'selected' : ''} onClick={() => loadAnalysis(stock.symbol)} disabled={loading} title={stock.name} aria-label={`${stock.symbol}, ${stock.name}`}>{stock.symbol}</button>)}
+      {query.trim() ? <div id="stock-analysis-suggestions" className="stock-symbol-list" role="listbox" aria-label="Matching NSE shares">
+        {matches.map(stock => <button key={stock.symbol} type="button" role="option" aria-selected={selectedSymbol === stock.symbol} className={selectedSymbol === stock.symbol ? 'selected' : ''} onClick={() => loadAnalysis(stock.symbol)} disabled={loading} title={stock.name}><strong>{stock.symbol.replace(/\.NS$/, '')}</strong><span>{stock.name}</span></button>)}
         {!matches.length && <span className="stock-symbol-empty">No supported symbols match that search.</span>}
-      </div>
+      </div> : <div className="stock-popular-row" aria-label="Popular and recently viewed NSE shares">
+        <strong>{recentSymbols.length ? 'Recently viewed' : 'Popular'}</strong>
+        {(recentSymbols.length ? recentSymbols : POPULAR_SYMBOLS.map(symbol => stocks.find(stock => stock.symbol.replace(/\.NS$/, '') === symbol)?.symbol).filter(Boolean)).map(symbol => {
+          const stock = stocks.find(item => item.symbol === symbol);
+          return stock && <button key={symbol} type="button" className="text-action" onClick={() => loadAnalysis(symbol)} disabled={loading}>{symbol.replace(/\.NS$/, '')}</button>;
+        })}
+      </div>}
     </form>
 
     {error && <div className="portfolio-notice"><strong>{error}</strong></div>}
@@ -177,11 +185,11 @@ export default function StockAnalysisView() {
       <div className="stock-signal-legend"><span className="signal-good">Green · looks good</span><span className="signal-bad">Red · needs care</span><span className="signal-watch">Amber · keep an eye on it</span><span className="signal-neutral">Grey · extra information</span></div>
       <div className="stock-analysis-grid">
         <Metric label="Price direction" value={simpleTrend} tone={trendTone} />
-        <Metric label="Recent price strength" value={technical.rsi14 != null ? technical.rsi14.toFixed(1) : '—'} tone={momentumTone} />
-        <Metric label="How steady the trend is" value={technical.adx14 != null ? technical.adx14.toFixed(1) : '—'} tone={technicalTone('adx', technical)} />
+        <Metric label="Recent price strength" value={technical.rsi14 != null ? formatNumber(technical.rsi14) : '—'} tone={momentumTone} />
+        <Metric label="How steady the trend is" value={technical.adx14 != null ? formatNumber(technical.adx14) : '—'} tone={technicalTone('adx', technical)} />
         <Metric label="Price change vs Nifty" value={technical.mansfield_rs63 != null ? percent(technical.mansfield_rs63) : '—'} tone={strengthTone} />
         <Metric label="Price change over 1 / 3 months" value={technical.return20_pct != null && technical.return63_pct != null ? `${percent(technical.return20_pct)} / ${percent(technical.return63_pct)}` : '—'} tone={returnTone} />
-        <Metric label="Usual daily price movement" value={technical.atr14_pct != null ? `${technical.atr14_pct}%` : '—'} tone={volatilityTone} />
+        <Metric label="Usual daily price movement" value={technical.atr14_pct != null ? formatPercent(technical.atr14_pct) : '—'} tone={volatilityTone} />
         <Metric label="Trading today vs usual" value={technical.volume_ratio20 != null ? `${technical.volume_ratio20}×` : '—'} tone={technicalTone('volume', technical)} />
         <Metric label="Average price over 1 / 2 / 10 months" value={technical.ema20 != null ? `${price(technical.ema20)} / ${price(technical.ema50)} / ${price(technical.ema200)}` : '—'} tone={technicalTone('ema', technical)} />
       </div>
@@ -222,7 +230,7 @@ export default function StockAnalysisView() {
         <div className="stock-analysis-fundamentals">
           {[
             ['Company size (market value)', fundamentals.market_cap, 'money'], ['Share price vs past earnings', fundamentals.trailing_pe, 'number'], ['Share price vs expected earnings', fundamentals.forward_pe, 'number'],
-            ['Share price vs company assets', fundamentals.price_to_book, 'number'], ['Earnings for each share', fundamentals.eps_ttm, 'money'], ['Yearly dividend paid', fundamentals.dividend_yield == null ? null : `${(fundamentals.dividend_yield * 100).toFixed(2)}%`, 'text'],
+            ['Share price vs company assets', fundamentals.price_to_book, 'number'], ['Earnings for each share', fundamentals.eps_ttm, 'money'], ['Yearly dividend paid', fundamentals.dividend_yield == null ? null : formatPercent(fundamentals.dividend_yield * 100), 'text'],
             ['Revenue growth', fundamentals.revenue_growth == null ? null : percent(fundamentals.revenue_growth * 100), 'text', fundamentals.revenue_growth * 100], ['Earnings growth', fundamentals.earnings_growth == null ? null : percent(fundamentals.earnings_growth * 100), 'text', fundamentals.earnings_growth * 100],
             ['Profit earned on shareholder money', fundamentals.return_on_equity == null ? null : percent(fundamentals.return_on_equity * 100), 'text', fundamentals.return_on_equity * 100], ['Profit left from sales', fundamentals.profit_margin == null ? null : percent(fundamentals.profit_margin * 100), 'text', fundamentals.profit_margin * 100],
             ['Debt compared with shareholder money', fundamentals.debt_to_equity, 'number'], ['Money available for near-term bills', fundamentals.current_ratio, 'number'], ['Cash left after spending', fundamentals.free_cash_flow, 'money'], ['Price movement compared with market', fundamentals.beta, 'number'],

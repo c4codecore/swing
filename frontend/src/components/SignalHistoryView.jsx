@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { History, RefreshCw, Search } from 'lucide-react';
+import { formatINR, formatPercent } from '../utils/formatters';
 
 function price(value) {
-  const number = Number(value);
-  return value == null || !Number.isFinite(number) ? '—' : `₹${number.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatINR(value);
 }
 
 function statusLabel(record) {
@@ -98,7 +98,7 @@ export default function SignalHistoryView({ onRefresh }) {
                 <td>{price(record.entry_price)}</td><td className="negative">{price(record.stop_loss)}</td><td className="positive">{price(record.target_1)}</td>
                 <td>{price(resultPrice)}<small>{record.exit_date ? displayDate(record.exit_date) : `Checked ${record.last_checked_date || 'pending'}`}</small></td>
                 <td><span className={`history-outcome ${record.outcome.toLowerCase()}`}>{statusLabel(record)}</span><small className="history-progress">Watched for {record.holding_sessions} of {record.max_holding_days} market days</small></td>
-                <td className={returnClass}>{record.return_pct == null ? '—' : `${record.return_pct > 0 ? '+' : ''}${record.return_pct}%`}</td>
+                <td className={returnClass}>{formatPercent(record.return_pct, { signed: true })}</td>
               </tr>;
             })}
           </tbody></table></div>

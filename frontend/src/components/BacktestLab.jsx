@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, TrendingUp, AlertTriangle, ShieldCheck, Activity, Award, BarChart2, Filter, CheckCircle2, XCircle, Clock, ChevronDown } from 'lucide-react';
 import { playTone } from '../utils/soundFx';
+import { formatINR, formatPercent } from '../utils/formatters';
 
 export default function BacktestLab() {
   const simpleStrategyLabels = {
@@ -16,6 +17,8 @@ export default function BacktestLab() {
   const [holdingDays, setHoldingDays] = useState(15);
   const [riskPct, setRiskPct] = useState(1.5);
   const [loading, setLoading] = useState(false);
+  const [backtestError, setBacktestError] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [results, setResults] = useState(null);
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [tradeFilter, setTradeFilter] = useState('ALL'); // 'ALL' | 'WIN' | 'LOSS'
@@ -24,6 +27,13 @@ export default function BacktestLab() {
   const [dailyHistoryByTrade, setDailyHistoryByTrade] = useState({});
   const [dailyHistoryLoading, setDailyHistoryLoading] = useState(null);
   const [dailyHistoryError, setDailyHistoryError] = useState({});
+
+  useEffect(() => {
+    if (!loading) return undefined;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   useEffect(() => {
     fetch('/api/strategies')
@@ -37,11 +47,16 @@ export default function BacktestLab() {
 
   const handleRunBacktest = async () => {
     setLoading(true);
+    setElapsedSeconds(0);
+    setBacktestError('');
     playTone('scan');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120_000);
     try {
       const res = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           strategy: selectedStrategy,
           period,
@@ -50,12 +65,17 @@ export default function BacktestLab() {
         })
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'The past-price check could not be completed.');
       setResults(data);
       playTone('success');
     } catch (err) {
       console.error("Backtest failed", err);
+      setBacktestError(err.name === 'AbortError'
+        ? 'This check took longer than two minutes and was stopped. Try a shorter past-price period or retry later.'
+        : err.message || 'The past-price check could not be completed. Check your connection and try again.');
       playTone('alert');
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -153,7 +173,7 @@ export default function BacktestLab() {
           }}>
             <span style={{ color: 'var(--text-dim)' }}>DATE: <b style={{ color: '#fff' }}>{activePoint.date}</b></span>
             <span style={{ color: 'var(--text-dim)' }}>
-              PORTFOLIO: <b>₹{activePoint.equity?.toFixed(2)}</b> ({activePoint.equity >= 100 ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs((activePoint.equity - 100)).toFixed(2)}%)
+              PORTFOLIO: <b>{formatINR(activePoint.equity)}</b> ({activePoint.equity >= 100 ? '▲ GAIN ' : '▼ LOSS '}{formatPercent(Math.abs(activePoint.equity - 100), { signed: activePoint.equity >= 100 })})
             </span>
           </div>
         )}
@@ -230,7 +250,7 @@ export default function BacktestLab() {
   );
 
   return (
-    <div style={{ animation: 'fadeInUp 0.35s ease' }}>
+    <div className="backtest-lab" style={{ animation: 'fadeInUp 0.35s ease' }}>
       {/* Top Configuration Controls */}
       <div className="glass-card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -249,9 +269,11 @@ export default function BacktestLab() {
             className="btn-cyber-primary"
           >
             <Play size={15} fill="#fff" />
-            {loading ? 'Checking past trades…' : 'Run past-price check'}
+            {loading ? `Checking · ${elapsedSeconds}s` : backtestError ? 'Try again' : 'Run past-price check'}
           </button>
         </div>
+        {loading && <p className="backtest-progress" role="status">Checking past share prices. Larger periods can take longer; this page will show an error and retry option if it exceeds two minutes.</p>}
+        {backtestError && <div className="portfolio-notice status-warning" role="alert"><AlertTriangle size={18} /><span>{backtestError}</span><button type="button" className="text-action" onClick={handleRunBacktest}>Try again</button></div>}
 
         {/* Input Parameters Controls Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
@@ -304,7 +326,7 @@ export default function BacktestLab() {
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
-              Maximum account loss per trade ({riskPct}%)
+              Maximum account loss per trade ({Number(riskPct).toFixed(2)}%)
             </label>
             <input 
               type="range" 
@@ -324,8 +346,8 @@ export default function BacktestLab() {
       {loading ? (
         <div className="glass-card empty-state" style={{ padding: '5rem 1rem' }}>
           <div className="live-dot" style={{ margin: '0 auto 1.5rem', width: 14, height: 14, background: '#38bdf8' }} />
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: '#fff' }}>
-            Checking how this rule would have worked on past share prices…
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1rem', color: 'var(--text)' }}>
+            Checking past share prices · {elapsedSeconds}s elapsed. Larger checks may take longer.
           </div>
         </div>
       ) : results ? (
@@ -337,7 +359,7 @@ export default function BacktestLab() {
                 Change in test account
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.total_return_pct >= 0 ? '#10b981' : '#f43f5e' }}>
-                {results.total_return_pct >= 0 ? '+' : ''}{results.total_return_pct}%
+                {results.total_return_pct >= 0 ? '▲ GAIN ' : '▼ LOSS '}{formatPercent(results.total_return_pct, { signed: true })}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Starting with ₹100</div>
             </div>
@@ -347,7 +369,7 @@ export default function BacktestLab() {
                 Trades that made money
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: results.win_rate_pct >= 50 ? '#10b981' : '#f59e0b' }}>
-                {results.win_rate_pct}%
+                {formatPercent(results.win_rate_pct)}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Out of {results.total_trades} finished trades</div>
             </div>
@@ -367,7 +389,7 @@ export default function BacktestLab() {
                 Largest fall from a high
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.75rem', fontWeight: 800, color: '#f43f5e' }}>
-                -{results.max_drawdown_pct}%
+                ▼ LOSS {formatPercent(-Math.abs(Number(results.max_drawdown_pct) || 0))}
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>Biggest drop before recovery</div>
             </div>
@@ -377,7 +399,7 @@ export default function BacktestLab() {
                 Average gain / average loss
               </div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.4rem' }}>
-                <span style={{ color: '#10b981' }}>+{results.avg_win_pct}%</span> / <span style={{ color: '#f43f5e' }}>-{results.avg_loss_pct}%</span>
+                <span>▲ GAIN {formatPercent(Math.abs(Number(results.avg_win_pct) || 0), { signed: true })}</span> / <span>▼ LOSS {formatPercent(-Math.abs(Number(results.avg_loss_pct) || 0))}</span>
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>For each finished trade</div>
             </div>
@@ -421,10 +443,10 @@ export default function BacktestLab() {
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>{rData.trades}</td>
                         <td>
-                          {rData.win_rate}% · {rData.win_rate >= 50 ? 'half or more' : 'less than half'}
+                          {formatPercent(rData.win_rate)} · {rData.win_rate >= 50 ? 'half or more' : 'less than half'}
                         </td>
                         <td className={rData.total_return_pct >= 0 ? 'positive' : 'negative'}>
-                          {rData.total_return_pct >= 0 ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs(Number(rData.total_return_pct) || 0)}%
+                          {rData.total_return_pct >= 0 ? '▲ GAIN ' : '▼ LOSS '}{formatPercent(rData.total_return_pct, { signed: true })}
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>{rData.profit_factor}</td>
                       </tr>
@@ -494,10 +516,10 @@ export default function BacktestLab() {
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.entry_date}</td>
                           <td style={{ padding: '0.65rem 0.75rem', color: 'var(--text-dim)' }}>{t.exit_date}</td>
-                          <td style={{ padding: '0.65rem 0.75rem' }}>₹{t.entry_price}</td>
-                          <td style={{ padding: '0.65rem 0.75rem' }}>₹{t.exit_price}</td>
+                          <td style={{ padding: '0.65rem 0.75rem' }}>{formatINR(t.entry_price)}</td>
+                          <td style={{ padding: '0.65rem 0.75rem' }}>{formatINR(t.exit_price)}</td>
                           <td className={isWin ? 'positive' : 'negative'} style={{ padding: '0.65rem 0.75rem', fontWeight: 700 }}>
-                            {isWin ? '▲ GAIN +' : '▼ LOSS −'}{Math.abs(Number(t.pnl_pct) || 0)}%
+                            {isWin ? '▲ GAIN ' : '▼ LOSS '}{formatPercent(t.pnl_pct, { signed: true })}
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>{t.holding_days}d</td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>
@@ -511,16 +533,16 @@ export default function BacktestLab() {
                             <div className="trade-daily-detail">
                               <div className="trade-daily-heading">
                                 <div><strong>{t.symbol} · Daily performance</strong><span>{t.entry_date} to {t.exit_date} · {t.holding_days} trading session{t.holding_days === 1 ? '' : 's'}</span></div>
-                                <span className={`trade-result-chip ${isWin ? 'win' : 'loss'}`}>{isWin ? 'WIN' : 'LOSS'} · {t.pnl_pct > 0 ? '+' : ''}{t.pnl_pct}% net</span>
+                                <span className={`trade-result-chip ${isWin ? 'win' : 'loss'}`}>{isWin ? '▲ GAIN' : '▼ LOSS'} · {formatPercent(t.pnl_pct, { signed: true })} net</span>
                               </div>
                               <p>Trade mark uses the daily close until exit day, then the modeled exit fill. Day change is measured against the previous session close; on the first day it is measured from entry. Final net P&amp;L includes estimated trading costs. Daily OHLC is candle data, so it does not show the exact intraday exit moment.</p>
                               {t.daily_performance?.length || dailyHistoryByTrade[tradeKey]?.length ? <div className="trade-daily-table-wrap">
                                 <table className="trade-daily-table">
                                   <thead><tr><th>DATE</th><th>OPEN ₹</th><th>HIGH ₹</th><th>LOW ₹</th><th>CLOSE ₹</th><th>TRADE MARK ₹</th><th>DAY CHANGE</th><th>RETURN FROM ENTRY</th></tr></thead>
                                   <tbody>{(t.daily_performance?.length ? t.daily_performance : dailyHistoryByTrade[tradeKey]).map((day) => <tr key={day.date}>
-                                    <td>{day.date}</td><td>₹{day.open?.toFixed(2)}</td><td>₹{day.high?.toFixed(2)}</td><td>₹{day.low?.toFixed(2)}</td><td>₹{day.close?.toFixed(2)}</td><td>₹{day.trade_mark_price?.toFixed(2)}</td>
-                                    <td className={day.daily_change_pct >= 0 ? 'positive' : 'negative'}>{day.daily_change_pct > 0 ? '+' : ''}{day.daily_change_pct}%</td>
-                                    <td className={day.from_entry_pct >= 0 ? 'positive' : 'negative'}>{day.from_entry_pct > 0 ? '+' : ''}{day.from_entry_pct}%</td>
+                                    <td>{day.date}</td><td>{formatINR(day.open)}</td><td>{formatINR(day.high)}</td><td>{formatINR(day.low)}</td><td>{formatINR(day.close)}</td><td>{formatINR(day.trade_mark_price)}</td>
+                                    <td className={day.daily_change_pct >= 0 ? 'positive' : 'negative'}>{formatPercent(day.daily_change_pct, { signed: true })}</td>
+                                    <td className={day.from_entry_pct >= 0 ? 'positive' : 'negative'}>{formatPercent(day.from_entry_pct, { signed: true })}</td>
                                   </tr>)}</tbody>
                                 </table>
                               </div> : dailyHistoryLoading === tradeKey
