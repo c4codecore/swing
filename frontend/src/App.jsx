@@ -140,7 +140,8 @@ function Sparkline({ positive = true, seed = 1 }) {
 }
 
 function MetricCard({ label, value, change, positive, icon: Icon, tone = 'mint', note }) {
-  return <article className={`metric-card tone-${tone}`}>
+  const status = positive === true ? 'gain' : positive === false ? 'loss' : 'neutral';
+  return <article className={`metric-card tone-${tone}`} data-status={status}>
     <div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon size={16} /></span></div>
     <div className="metric-value">{value}</div>
     <div className="metric-bottom"><span className={`metric-change ${positive == null ? '' : positive ? 'positive' : 'negative'}`}>{positive === true ? <ArrowUpRight size={14} /> : positive === false ? <ArrowDownRight size={14} /> : null}{change}</span><span>{note}</span></div>
