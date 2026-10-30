@@ -289,7 +289,7 @@ th { color: var(--text-muted); font-weight: 700; }
 .direction-badge.bearish, .value-badge.loss, .negative-badge { background: var(--negative-fill); color: var(--negative-text); border-width: .1875rem; border-style: dashed; }
 .regime-badge.state-strong-bull { border-style: double; }
 .regime-badge.state-pullback-bull { border-style: dashed; }
-.regime-badge.state-sideways-choppy { border-style: dotted; }
+.regime-badge.state-sideways-choppy { border-style: solid; }
 .regime-badge.state-bearish-correction { border-style: dashed; border-width: .1875rem; }
 .regime-badge.state-extreme-panic-oversold { border-style: double; border-width: .25rem; }
 .positive, .negative { color: var(--text) !important; font-weight: 700; }
@@ -338,7 +338,7 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .signal-good, .signal-bad, .signal-watch, .signal-neutral { border: var(--border-control); border-radius: var(--radius-sm); padding: var(--space-2); background: var(--surface-raised); color: var(--text); }
 .signal-good { border-style: double; }
 .signal-bad { border-style: dashed; border-width: .1875rem; }
-.signal-watch { border-style: dotted; }
+.signal-watch { border-style: solid; }
 .signal-neutral { border-style: solid; }
 .research-news-list { display: grid; gap: var(--space-3); padding-left: var(--space-5); }
 .portfolio-entry, .portfolio-symbol-search { display: grid; gap: var(--space-3); padding: var(--space-4); border: var(--border-card); border-radius: var(--radius-lg); background: var(--surface); }
@@ -357,7 +357,7 @@ span.negative, strong.negative, b.negative, small.negative { display: inline-fle
 .options-leg-row { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--border-soft); }
 .history-date-group { margin-block: var(--space-3); }
 .history-date-heading { margin-bottom: var(--space-2); }
-.history-outcome.open { border-style: dotted; }
+.history-outcome.open { border-style: solid; }
 .history-outcome.target_hit { border-style: double; }
 .history-outcome.stop_loss { border-style: dashed; }
 .trade-exit-reason, .trade-result-chip { min-height: var(--target-size); display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface-raised); }
