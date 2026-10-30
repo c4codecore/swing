@@ -40,6 +40,7 @@ from app.core.signal_history import capture_signals, get_signal_history
 from app.core.portfolio_storage import get_manual_holdings, replace_manual_holdings
 from app.engine.regime import analyze_market_regime
 from app.engine.intraday import analyze_intraday
+from app.engine.intraday_screener import run_intraday_screener
 from app.engine.options import build_nifty_options_plan
 from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
@@ -150,6 +151,35 @@ def intraday_analysis():
     except Exception:
         logger.exception("Intraday analysis failed")
         raise HTTPException(status_code=502, detail="IIFL intraday analysis could not be calculated.")
+
+
+@app.get("/api/intraday/screener")
+def intraday_stock_screener(
+    force_refresh: bool = False,
+    strategy: Optional[str] = None,
+):
+    """Scan NSE stocks for world-class intraday setups using multi-signal analysis."""
+    try:
+        valid_strategies = {
+            "vwap_opening_drive", "orb_prebreakout", "momentum_ignition",
+            "mean_reversion", "rs_surge",
+        }
+        strat_filter = strategy if isinstance(strategy, str) and strategy.strip() else None
+        if strat_filter and strat_filter not in valid_strategies:
+            raise HTTPException(status_code=422, detail=f"Unknown intraday strategy. Available: {', '.join(sorted(valid_strategies))}")
+        return run_intraday_screener(
+            strategy_filter=strat_filter,
+            force_refresh=bool(force_refresh),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except HTTPException:
+        raise
+    except MarketDataUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        logger.exception("Intraday screener request failed")
+        raise HTTPException(status_code=500, detail="Unable to complete intraday market scan.")
 
 
 @app.get("/api/options")
