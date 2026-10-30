@@ -37,8 +37,8 @@
   --border-control: 2px solid var(--border-color);
   --border-card: 2px solid var(--border-color);
   --border-focus: 3px solid var(--gray-9);
-  --font-xs: .75rem;
-  --font-sm: .875rem;
+  --font-xs: 1rem;
+  --font-sm: 1rem;
   --font-md: 1rem;
   --font-lg: 1.25rem;
   --font-xl: 1.75rem;
@@ -134,8 +134,19 @@
 }
 
 * { box-sizing: border-box; }
-html { min-height: 100%; background: var(--bg); scroll-behavior: smooth; }
+html { min-height: 100%; background: var(--bg); scroll-behavior: smooth; font-size: 18px; }
+html[data-font-scale="115"] { font-size: 20.7px; }
+html[data-font-scale="130"] { font-size: 23.4px; }
+html[data-font-scale="150"] { font-size: 27px; }
+html[data-font-scale="175"] { font-size: 31.5px; }
 body { min-height: 100vh; margin: 0; background: var(--bg); color: var(--text); font-size: var(--font-md); font-weight: 500; line-height: var(--line-height); }
+body :where(*) { font-size: max(1rem, var(--font-md)) !important; font-weight: 500 !important; line-height: 1.5 !important; }
+body :where(h1, h2, h3, h4, h5, h6, b, strong, th, label, button, .metric-value, .hero-market-price-row strong, .exposure-card strong, .metric-val) { font-weight: 700 !important; }
+body :where(h1, .welcome-row h1, .module-heading h1) { font-size: var(--font-2xl) !important; }
+body :where(h2, .section-heading h2, .stock-analysis-section-heading h2) { font-size: var(--font-xl) !important; }
+body :where(h3) { font-size: var(--font-lg) !important; }
+body :where(.metric-value, .hero-market-price-row strong, .exposure-card strong, .metric-val) { font-size: var(--font-xl) !important; }
+body :where(.font-scale-label, .font-scale-buttons button) { font-size: 1rem !important; }
 button, input, select, textarea { color: inherit; font: inherit; }
 button { min-height: var(--target-size); cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible { outline: var(--border-focus); outline-offset: .1875rem; }
@@ -194,6 +205,12 @@ img, svg { max-width: 100%; }
 .setting-hint { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-muted); }
 .appearance-controls-compact { display: grid; }
 .appearance-controls-compact .appearance-quick, .appearance-controls-compact .appearance-trigger { width: 100%; justify-content: flex-start; }
+.font-scale-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1); border: var(--border-control); border-radius: var(--radius-md); background: var(--surface); }
+.font-scale-label { color: var(--text-muted); font-weight: 700; }
+.font-scale-buttons { display: flex; gap: var(--space-1); }
+.font-scale-buttons button { min-width: var(--target-size); min-height: var(--target-size); padding: var(--space-1) var(--space-2); border: var(--border-control); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text); font-weight: 700; }
+.font-scale-buttons button:disabled { opacity: .65; }
+.font-scale-compact { grid-template-columns: 1fr; }
 
 /* Overview, summaries, cards */
 .welcome-row, .module-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }

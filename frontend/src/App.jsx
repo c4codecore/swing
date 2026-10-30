@@ -15,6 +15,7 @@ import StockAnalysisView from './components/StockAnalysisView';
 import SignalHistoryView from './components/SignalHistoryView';
 import InstitutionalFlowView from './components/InstitutionalFlowView';
 import AppearanceControls from './components/AppearanceControls';
+import FontScaleControls from './components/FontScaleControls';
 import ValueBadge from './components/ValueBadge';
 import { playTone, setSoundEnabled } from './utils/soundFx';
 
@@ -401,6 +402,7 @@ export default function App() {
   const [dim, setDim] = useState(() => readAppearancePreference('marketvoice-dim', 'normal'));
   const [grayscale, setGrayscale] = useState(() => readAppearancePreference('marketvoice-grayscale', 'false') === 'true');
   const [decorativeMotion, setDecorativeMotion] = useState(() => readAppearancePreference('marketvoice-motion', 'false') === 'true');
+  const [fontScale, setFontScale] = useState(() => Number(readAppearancePreference('marketvoice-font-scale', '100')) || 100);
   const [activeTab, setActiveTab] = useState('screener');
   const [regimeData, setRegimeData] = useState(null);
   const [liveStatus, setLiveStatus] = useState(null);
@@ -438,6 +440,7 @@ export default function App() {
     root.dataset.dim = dim;
     root.dataset.grayscale = grayscale ? 'on' : 'off';
     root.dataset.decorativeMotion = decorativeMotion ? 'on' : 'off';
+    root.dataset.fontScale = String(fontScale);
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.content = theme === 'light' ? '#ffffff' : theme === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches ? '#ffffff' : '#191919';
     try {
@@ -445,8 +448,9 @@ export default function App() {
       window.localStorage.setItem('marketvoice-dim', dim);
       window.localStorage.setItem('marketvoice-grayscale', String(grayscale));
       window.localStorage.setItem('marketvoice-motion', String(decorativeMotion));
+      window.localStorage.setItem('marketvoice-font-scale', String(fontScale));
     } catch { /* Preferences remain usable for this session when storage is unavailable. */ }
-  }, [theme, dim, grayscale, decorativeMotion]);
+  }, [theme, dim, grayscale, decorativeMotion, fontScale]);
 
   useEffect(() => {
     let active = true;
@@ -763,6 +767,7 @@ export default function App() {
       <div className="rail-spacer" />
       <button className="side-nav-item support-item" onClick={() => showToast('Help center coming soon', 'info')}><CircleHelp size={18} /><span>Help & support</span></button>
       <button className="profile-button" aria-label="Account settings" onClick={() => showToast('Account settings coming soon', 'info')}><span className="avatar">A</span><span className="profile-copy"><b>Analyst</b><small>Personal workspace</small></span><MoreHorizontal size={17} /></button>
+      <FontScaleControls compact value={fontScale} onChange={setFontScale} />
       <AppearanceControls compact theme={theme} setTheme={setTheme} dim={dim} setDim={setDim} grayscale={grayscale} setGrayscale={setGrayscale} motion={decorativeMotion} setMotion={setDecorativeMotion} />
     </aside>
 
@@ -775,6 +780,7 @@ export default function App() {
           <div className="breadcrumb"><span className="crumb-app">MarketVoice</span><span className="crumb-slash">/</span><strong>{marketName}</strong></div>
         </div>
         <div className="topbar-actions">
+          <FontScaleControls value={fontScale} onChange={setFontScale} />
           <div className={`session-pill ${isMarketOpen ? 'session-open' : ''}`}><span className="session-indicator" /><span>{isMarketOpen ? 'NSE market open' : 'Market closed'}</span><i />{currentTime} IST</div>
           <button className={`iifl-feed-button ${liveStatus?.authenticated ? 'connected' : ''}`} onClick={() => liveStatus?.configured ? window.location.assign('/api/market/live/login') : showToast('Add rotated IIFL credentials and the NIFTY instrument ID in backend/.env', 'warning')} title="Connect the IIFL live market feed"><Radio size={14} /><span>{liveStatus?.authenticated ? 'IIFL live' : 'Connect IIFL'}</span></button>
           <button className="icon-button" title={soundOn ? 'Mute sound' : 'Enable sound'} onClick={toggleSound}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
