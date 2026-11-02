@@ -3,7 +3,7 @@ import { Play, TrendingUp, AlertTriangle, ShieldCheck, Activity, Award, BarChart
 import { playTone } from '../utils/soundFx';
 import { formatINR, formatPercent } from '../utils/formatters';
 
-export default function BacktestLab() {
+export default function BacktestLab({ onSelectStock }) {
   const simpleStrategyLabels = {
     trend_pullback: 'Buy a dip in a rising share',
     relative_strength: 'Shares doing better than Nifty',
@@ -501,13 +501,16 @@ export default function BacktestLab() {
                         <React.Fragment key={tradeKey}>
                         <tr className={isExpanded ? 'trade-log-row expanded' : 'trade-log-row'} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700 }}>
-                            <button
-                              type="button"
-                              className="trade-symbol-toggle"
-                              aria-expanded={isExpanded}
-                              aria-label={`${isExpanded ? 'Hide' : 'Show'} daily performance for ${t.symbol}, ${t.entry_date}`}
-                              onClick={() => toggleTradeDetails(t, tradeKey)}
-                            >{t.symbol}<ChevronDown size={14} className={isExpanded ? 'rotated' : ''} /></button>
+                            <span className="trade-symbol-actions">
+                              <button type="button" className="stock-name-button" onClick={() => onSelectStock?.({ symbol: t.symbol, source: 'backtest' })} aria-label={`View ${t.symbol} stock research`}>{t.symbol}</button>
+                              <button
+                                type="button"
+                                className="trade-symbol-toggle"
+                                aria-expanded={isExpanded}
+                                aria-label={`${isExpanded ? 'Hide' : 'Show'} daily performance for ${t.symbol}, ${t.entry_date}`}
+                                onClick={() => toggleTradeDetails(t, tradeKey)}
+                              ><ChevronDown size={14} className={isExpanded ? 'rotated' : ''} /></button>
+                            </span>
                           </td>
                           <td style={{ padding: '0.65rem 0.75rem' }}>
                             <span className={`trade-regime-chip ${t.regime === 'BULLISH' ? 'bullish' : t.regime === 'BEARISH' ? 'bearish' : 'unknown'}`} title="Whether Nifty was generally rising or falling that day">
@@ -532,7 +535,7 @@ export default function BacktestLab() {
                           <td colSpan={9}>
                             <div className="trade-daily-detail">
                               <div className="trade-daily-heading">
-                                <div><strong>{t.symbol} · Daily performance</strong><span>{t.entry_date} to {t.exit_date} · {t.holding_days} trading session{t.holding_days === 1 ? '' : 's'}</span></div>
+                                <div><strong><button type="button" className="stock-name-button" onClick={() => onSelectStock?.({ symbol: t.symbol, source: 'backtest' })} aria-label={`View ${t.symbol} stock research`}>{t.symbol}</button> · Daily performance</strong><span>{t.entry_date} to {t.exit_date} · {t.holding_days} trading session{t.holding_days === 1 ? '' : 's'}</span></div>
                                 <span className={`trade-result-chip ${isWin ? 'win' : 'loss'}`}>{isWin ? '▲ GAIN' : '▼ LOSS'} · {formatPercent(t.pnl_pct, { signed: true })} net</span>
                               </div>
                               <p>Trade mark uses the daily close until exit day, then the modeled exit fill. Day change is measured against the previous session close; on the first day it is measured from entry. Final net P&amp;L includes estimated trading costs. Daily OHLC is candle data, so it does not show the exact intraday exit moment.</p>

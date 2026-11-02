@@ -59,7 +59,7 @@ function fundamentalTone(label, value) {
   return 'neutral';
 }
 
-export default function StockAnalysisView() {
+export default function StockAnalysisView({ onSelectStock }) {
   const [stocks, setStocks] = useState([]);
   const [listMetadata, setListMetadata] = useState(null);
   const [query, setQuery] = useState('');
@@ -172,7 +172,7 @@ export default function StockAnalysisView() {
 
     {data && <>
       <section className="stock-analysis-overview">
-        <div className="stock-analysis-title"><span className="instrument-token large-token">{selectedSymbol.slice(0, 1)}</span><div><h2>{fundamentals.company_name || selectedSymbol}</h2><span>{selectedSymbol}{fundamentals.sector ? ` · ${fundamentals.sector}` : ''}{fundamentals.industry ? ` · ${fundamentals.industry}` : ''}</span></div></div>
+        <div className="stock-analysis-title"><span className="instrument-token large-token">{selectedSymbol.slice(0, 1)}</span><div><h2><button type="button" className="stock-name-button" onClick={() => onSelectStock?.({ symbol: selectedSymbol, source: 'analysis' })} aria-label={`Open ${selectedSymbol} in shared stock research`}>{fundamentals.company_name || selectedSymbol}</button></h2><span>{selectedSymbol}{fundamentals.sector ? ` · ${fundamentals.sector}` : ''}{fundamentals.industry ? ` · ${fundamentals.industry}` : ''}</span></div></div>
         <div className="stock-analysis-price"><span>LATEST DAILY PRICE</span><strong>{price(technical.close)}</strong><small>As of {technical.as_of || 'unavailable'}</small></div>
       </section>
 

@@ -14,7 +14,10 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
-from app.core.config import BENCHMARK_INDEX, INTRADAY_DATA_TTL_SECONDS
+from app.core.config import (
+    BENCHMARK_INDEX, DAILY_DATA_CACHE_TTL_SECONDS, INTRADAY_DATA_TTL_SECONDS,
+    INTRADAY_PROFILE_PERIOD, INTRADAY_SCREENING_UNIVERSE_MODE,
+)
 from app.core.data_fetcher import MarketDataUnavailable, fetch_daily_batch, fetch_benchmark, fetch_intraday_batch
 from app.core.screening_universe import get_screening_universe
 from app.core.indicators import ema, rsi, atr, macd, bollinger_bands
@@ -22,7 +25,6 @@ from app.engine.filters import filter_tradable_symbols
 
 logger = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
-INTRADAY_TOP_N = 10
 
 
 def _as_ist_index(frame: pd.DataFrame) -> pd.DataFrame:
@@ -210,7 +212,7 @@ def _evaluate_strategy(strategy: str, daily: pd.DataFrame, session: pd.DataFrame
     day_change = (close / prev_close - 1) * 100
     gap_pct = (opn / prev_close - 1) * 100
     daily_ema20 = float(ema(dc, 20).iloc[-1]); daily_ema50 = float(ema(dc, 50).iloc[-1]); daily_ema200 = float(ema(dc, 200).iloc[-1]) if len(dc) >= 200 else daily_ema50
-    daily_atr = float(atr(daily, 14).iloc[-1])
+    daily_atr = float(atr(completed_daily, 14).iloc[-1])
     daily_rsi = _safe_rsi(dc)
     intraday_rsi = _safe_rsi(session["Close"].astype(float))
     bb_upper, bb_mid, bb_lower, bb_width = bollinger_bands(dc, 20, 2.0)
@@ -245,6 +247,35 @@ def _evaluate_strategy(strategy: str, daily: pd.DataFrame, session: pd.DataFrame
                 alpha = day_change - bench_change
                 if alpha >= 0.8 and rvol >= 1.0 and close >= daily_ema20 and intraday_rsi >= 48 and close >= vwap:
                     signal = ("BUY", "Relative Strength Surge", [f"Intraday relative strength vs NIFTY: {alpha:+.2f}% (stock {day_change:+.2f}%, NIFTY {bench_change:+.2f}%)", f"5-minute RVOL {rvol:.2f}x; 5-minute RSI {intraday_rsi:.1f}", f"Price is above 5-minute VWAP and daily EMA20 ₹{daily_ema20:.2f}"])
+    elif strategy == "opening_range_breakout":
+        session_minutes = session.index.hour * 60 + session.index.minute
+        opening_range = session[(session_minutes >= 555) & (session_minutes < 570)]
+        if len(opening_range) >= 3 and session_minutes[-1] >= 570:
+            range_high = float(opening_range["High"].max())
+            range_low = float(opening_range["Low"].min())
+            if close > range_high * 1.001 and close >= vwap and rvol >= 1.0 and intraday_rsi >= 52:
+                signal = ("BUY", "15-Min Opening Range Breakout", [f"Price cleared the first 15-minute high at ₹{range_high:.2f}", f"Price is above VWAP with session RVOL {rvol:.2f}x", f"5-minute RSI confirms upward momentum at {intraday_rsi:.1f}"])
+            elif close < range_low * 0.999 and close <= vwap and rvol >= 1.0 and intraday_rsi <= 48:
+                signal = ("SHORT", "15-Min Opening Range Breakdown", [f"Price fell below the first 15-minute low at ₹{range_low:.2f}", f"Price is below VWAP with session RVOL {rvol:.2f}x", f"5-minute RSI confirms downward momentum at {intraday_rsi:.1f}"])
+    elif strategy == "vwap_reclaim":
+        typical = (session["High"].astype(float) + session["Low"].astype(float) + session["Close"].astype(float)) / 3.0
+        volume = session["Volume"].astype(float)
+        cumulative_volume = volume.cumsum().replace(0, np.nan)
+        session_vwap = (typical * volume).cumsum() / cumulative_volume
+        if len(session_vwap) >= 2 and pd.notna(session_vwap.iloc[-2]) and pd.notna(session_vwap.iloc[-1]):
+            reclaimed = float(session["Close"].iloc[-2]) <= float(session_vwap.iloc[-2]) and close > float(session_vwap.iloc[-1])
+            lost = float(session["Close"].iloc[-2]) >= float(session_vwap.iloc[-2]) and close < float(session_vwap.iloc[-1])
+            if reclaimed and rvol >= 1.0 and intraday_rsi >= 48:
+                signal = ("BUY", "VWAP Reclaim", ["Latest completed 5-minute candle moved back above session VWAP", f"Session RVOL {rvol:.2f}x and 5-minute RSI {intraday_rsi:.1f}", "A possible intraday trend recovery; confirm price and risk before acting"])
+            elif lost and rvol >= 1.0 and intraday_rsi <= 52:
+                signal = ("SHORT", "VWAP Breakdown", ["Latest completed 5-minute candle moved below session VWAP", f"Session RVOL {rvol:.2f}x and 5-minute RSI {intraday_rsi:.1f}", "A possible intraday trend weakening; confirm price and risk before acting"])
+    elif strategy == "trend_pullback":
+        candle_open = float(session["Open"].iloc[-1])
+        vwap_distance = abs(close / vwap - 1) if vwap > 0 else 1.0
+        if (daily_ema20 > daily_ema50 and close >= daily_ema20 * 0.99 and close >= vwap
+                and vwap_distance <= 0.0075 and close >= candle_open
+                and rvol >= 0.8 and 48 <= intraday_rsi <= 68):
+            signal = ("BUY", "Trend Pullback Bounce", [f"Daily uptrend: EMA20 ₹{daily_ema20:.2f} is above EMA50 ₹{daily_ema50:.2f}", f"Price is holding near/above VWAP with session RVOL {rvol:.2f}x", f"Latest 5-minute candle is recovering; RSI {intraday_rsi:.1f}"])
 
     if not signal:
         return None
@@ -277,7 +308,10 @@ def _evaluate_strategy(strategy: str, daily: pd.DataFrame, session: pd.DataFrame
     }
 
 
-INTRADAY_STRATEGIES = ["vwap_opening_drive", "orb_prebreakout", "momentum_ignition", "mean_reversion", "rs_surge"]
+INTRADAY_STRATEGIES = [
+    "vwap_opening_drive", "orb_prebreakout", "momentum_ignition", "mean_reversion", "rs_surge",
+    "opening_range_breakout", "vwap_reclaim", "trend_pullback",
+]
 
 
 def _compute_composite_score(signal: Dict[str, Any], metrics: Dict[str, float], avg_traded_value: float) -> float:
@@ -296,7 +330,7 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
                           force_refresh: bool = False) -> Dict[str, Any]:
     scan_started = perf_counter()
     if symbols is None:
-        selected_symbols, universe_metadata = get_screening_universe()
+        selected_symbols, universe_metadata = get_screening_universe(INTRADAY_SCREENING_UNIVERSE_MODE)
     else:
         selected_symbols, universe_metadata = list(symbols), {"mode": "explicit", "count": len(symbols)}
     scan_symbols = list(dict.fromkeys(selected_symbols))
@@ -310,7 +344,10 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
     now = datetime.now(IST)
     today = now.date()
     # Daily context and liquidity pre-filter run before the batched 5-minute request.
-    daily_frames, daily_failures = fetch_daily_batch(scan_symbols, period="1y")
+    daily_fetch_started = perf_counter()
+    daily_frames, daily_failures = fetch_daily_batch(
+        scan_symbols, period="1y", cache_ttl_seconds=DAILY_DATA_CACHE_TTL_SECONDS
+    )
     failures: List[Dict[str, str]] = [
         {"symbol": item["symbol"].replace(".NS", ""), "reason": item["reason"]}
         for item in daily_failures
@@ -319,20 +356,25 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
         benchmark_daily = fetch_benchmark(period="1y")
     except Exception:
         benchmark_daily = pd.DataFrame()
+    daily_fetch_seconds = perf_counter() - daily_fetch_started
 
+    filter_started = perf_counter()
     candidates, filter_rejections = filter_tradable_symbols(
         scan_symbols, daily_frames, market="intraday", as_of=now
     )
     daily_stats = {symbol: _daily_average_volume(daily_frames[symbol], today) for symbol in candidates}
+    filter_seconds = perf_counter() - filter_started
 
     intraday_symbols = candidates + [BENCHMARK_INDEX]
+    intraday_fetch_started = perf_counter()
     try:
-        intraday_frames = fetch_intraday_batch(intraday_symbols, period="60d", interval="5m", ttl_seconds=INTRADAY_DATA_TTL_SECONDS) if candidates else {}
+        intraday_frames = fetch_intraday_batch(intraday_symbols, period=INTRADAY_PROFILE_PERIOD, interval="5m", ttl_seconds=INTRADAY_DATA_TTL_SECONDS) if candidates else {}
     except Exception as exc:
         intraday_frames = {}
         batch_error = str(exc)[:160]
     else:
         batch_error = "No 5-minute candles returned"
+    intraday_fetch_seconds = perf_counter() - intraday_fetch_started
 
     for symbol in candidates:
         if symbol not in intraday_frames and not any(
@@ -341,6 +383,7 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
             failures.append({"symbol": symbol.replace(".NS", ""), "reason": batch_error})
     benchmark_session = _current_session(intraday_frames.get(BENCHMARK_INDEX, pd.DataFrame()), now)
     all_signals: List[Dict[str, Any]] = []
+    strategy_eval_started = perf_counter()
     for symbol in candidates:
         if symbol not in intraday_frames:
             continue
@@ -379,6 +422,7 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
                 "composite_score": _compute_composite_score(signal, metrics, avg_value),
             })
             all_signals.append(signal)
+    strategy_eval_seconds = perf_counter() - strategy_eval_started
 
     best_per_symbol: Dict[str, Dict[str, Any]] = {}
     for signal in all_signals:
@@ -393,13 +437,19 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
     for signal in unique_signals:
         strat_counts[signal["strategy"]] = strat_counts.get(signal["strategy"], 0) + 1
     result = {
-        "count": min(len(unique_signals), INTRADAY_TOP_N), "signals": unique_signals[:INTRADAY_TOP_N],
-        "all_signals": all_signals, "cached": False, "timestamp": now.isoformat(),
+        "count": len(unique_signals), "signals": unique_signals,
+        "cached": False, "timestamp": now.isoformat(),
         "data_status": "complete" if not failures else "partial",
         "scan_summary": {"requested": len(scan_symbols), "succeeded": succeeded, "failed": len(failures),
                          "failed_symbols": [item["symbol"] for item in failures],
                          "universe": universe_metadata,
                          "duration_seconds": round(perf_counter() - scan_started, 3),
+                         "timings_seconds": {
+                             "daily_data": round(daily_fetch_seconds, 3),
+                             "tradability_filter": round(filter_seconds, 3),
+                             "five_minute_data": round(intraday_fetch_seconds, 3),
+                             "strategy_calculation": round(strategy_eval_seconds, 3),
+                         },
                          "daily_fetch_method": "paced Yahoo Finance multi-symbol batches",
                          "candidate_5m_requests": len(candidates), "total_setups": len(unique_signals),
                          "filter_rejections": filter_rejections},
@@ -410,7 +460,10 @@ def run_intraday_screener(symbols: Optional[List[str]] = None, strategy_filter: 
             {"id": "orb_prebreakout", "title": "Breakout Setup (Tight Squeeze)", "description": "Daily resistance and ATR with completed 5-minute confirmation"},
             {"id": "momentum_ignition", "title": "Momentum Ignition", "description": "Daily trend and MACD context with completed 5-minute RSI and RVOL"},
             {"id": "mean_reversion", "title": "Mean Reversion Bounce", "description": "Daily Bollinger support with completed 5-minute VWAP and RSI"},
-            {"id": "rs_surge", "title": "Relative Strength Surge", "description": "Completed 5-minute stock performance relative to NIFTY 50"},
+            {"id": "rs_surge", "title": "Relative Strength Surge", "description": "Completed 5-minute stock performance relative to the NIFTY 500 benchmark"},
+            {"id": "opening_range_breakout", "title": "15-Min Opening Range Breakout", "description": "Confirmed move beyond the first 15-minute high/low with VWAP and volume checks"},
+            {"id": "vwap_reclaim", "title": "VWAP Reclaim / Breakdown", "description": "Latest completed 5-minute candle crosses session VWAP with volume confirmation"},
+            {"id": "trend_pullback", "title": "Trend Pullback Bounce", "description": "Daily uptrend with a 5-minute pullback holding around VWAP"},
         ],
         "disclaimer": "Decision-support only. Not investment advice. Past performance does not guarantee future results. No orders are placed.",
     }

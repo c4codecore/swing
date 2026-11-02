@@ -11,8 +11,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
 
-from app.core.config import DEFAULT_UNIVERSE
-
 logger = logging.getLogger(__name__)
 
 _LIST_URLS = (
@@ -101,10 +99,17 @@ def get_nse_equities(force_refresh: bool = False) -> tuple[List[Dict[str, str]],
             return list(_cached_stocks), stale_metadata
 
         # Keep basic research usable if NSE is unreachable on the first request.
+        # Use the bundled/cached NIFTY 500 list instead of falling back to 50 names.
+        try:
+            from app.core.screening_universe import get_nifty500_symbols
+            fallback_symbols, _ = get_nifty500_symbols()
+        except Exception:
+            logger.exception("Bundled NIFTY 500 research fallback is unavailable")
+            fallback_symbols = []
         fallback = {symbol.replace(".NS", ""): {
             "symbol": symbol.replace(".NS", ""), "name": symbol.replace(".NS", ""),
             "exchange": "NSE", "segment": "Fallback", "series": "EQ",
-        } for symbol in DEFAULT_UNIVERSE}
+        } for symbol in fallback_symbols}
         fallback["IRCTC"] = {"symbol": "IRCTC", "name": "Indian Railway Catering and Tourism Corporation Limited", "exchange": "NSE", "segment": "Fallback", "series": "EQ"}
         _cached_stocks = sorted(fallback.values(), key=lambda item: item["symbol"])
         _cached_at = time.monotonic()

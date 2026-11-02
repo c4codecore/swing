@@ -82,8 +82,8 @@ def fetch_ohlcv(symbol: str, period: str = "1y", interval: str = "1d") -> pd.Dat
     with _CACHE_LOCK:
         _CACHE[key] = (time.monotonic(), frame.copy())
         # Bound memory for long-running API processes.
-        if len(_CACHE) > 512:
-            oldest = sorted(_CACHE, key=lambda cache_key: _CACHE[cache_key][0])[:128]
+        if len(_CACHE) > config.MARKET_DATA_CACHE_MAX_ITEMS:
+            oldest = sorted(_CACHE, key=lambda cache_key: _CACHE[cache_key][0])[:max(128, config.MARKET_DATA_CACHE_MAX_ITEMS // 16)]
             for cache_key in oldest:
                 _CACHE.pop(cache_key, None)
     return frame.copy()
@@ -117,7 +117,8 @@ def _split_yf_download(raw: pd.DataFrame, tickers: tuple[str, ...]) -> Dict[str,
     return frames
 
 
-def fetch_daily_batch(symbols, period: str = "1y", interval: str = "1d") -> tuple[Dict[str, pd.DataFrame], list[dict[str, str]]]:
+def fetch_daily_batch(symbols, period: str = "1y", interval: str = "1d",
+                      cache_ttl_seconds: int = CACHE_TTL_SECONDS) -> tuple[Dict[str, pd.DataFrame], list[dict[str, str]]]:
     """Fetch daily OHLCV in paced multi-symbol Yahoo requests and populate the shared cache.
 
     Returns `(frames_by_symbol, failures)` so a screener can summarize missing symbols.
@@ -133,7 +134,7 @@ def fetch_daily_batch(symbols, period: str = "1y", interval: str = "1d") -> tupl
     with _CACHE_LOCK:
         for symbol in symbols_tuple:
             cached = _CACHE.get((symbol, period, interval))
-            if cached and now - cached[0] < CACHE_TTL_SECONDS:
+            if cached and now - cached[0] < cache_ttl_seconds:
                 frames[symbol] = cached[1].copy()
             else:
                 missing.append(symbol)
@@ -176,8 +177,8 @@ def fetch_daily_batch(symbols, period: str = "1y", interval: str = "1d") -> tupl
             time.sleep(config.DAILY_BATCH_PAUSE_SECONDS)
 
     with _CACHE_LOCK:
-        if len(_CACHE) > 512:
-            oldest = sorted(_CACHE, key=lambda cache_key: _CACHE[cache_key][0])[:128]
+        if len(_CACHE) > config.MARKET_DATA_CACHE_MAX_ITEMS:
+            oldest = sorted(_CACHE, key=lambda cache_key: _CACHE[cache_key][0])[:max(128, config.MARKET_DATA_CACHE_MAX_ITEMS // 16)]
             for cache_key in oldest:
                 _CACHE.pop(cache_key, None)
     return {symbol: frame.copy() for symbol, frame in frames.items()}, failures

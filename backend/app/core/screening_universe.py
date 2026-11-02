@@ -95,17 +95,17 @@ def get_nifty500_symbols(force_refresh: bool = False) -> tuple[list[str], dict[s
 def get_screening_universe(mode: str | None = None, force_refresh: bool = False) -> tuple[list[str], dict[str, Any]]:
     if mode is None:
         if config.USE_NIFTY50_ONLY and config.USE_FULL_NSE_EQUITY_LIST:
-            raise ValueError("Choose only one universe override: USE_NIFTY50_ONLY or USE_FULL_NSE_EQUITY_LIST.")
+            raise ValueError("Choose only one universe override: legacy NIFTY 50 or full NSE equities.")
         if config.USE_NIFTY50_ONLY:
-            mode = "nifty50"
+            mode = "nifty500"
         elif config.USE_FULL_NSE_EQUITY_LIST:
             mode = "nse_equities"
         else:
             mode = config.SCREENING_UNIVERSE_MODE
     selected = mode.strip().lower()
     if selected == "nifty50":
-        symbols = list(config.NIFTY50_UNIVERSE)
-        return symbols, {"mode": selected, "source": "NIFTY50_UNIVERSE in core/config.py", "count": len(symbols)}
+        symbols, metadata = get_nifty500_symbols(force_refresh=force_refresh)
+        return symbols, {**metadata, "mode": "nifty500", "legacy_mode_redirected": True}
     if selected == "nifty500":
         symbols, metadata = get_nifty500_symbols(force_refresh=force_refresh)
         return symbols, {**metadata, "mode": selected}

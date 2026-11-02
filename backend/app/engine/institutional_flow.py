@@ -15,13 +15,14 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from app.core.config import DEFAULT_UNIVERSE
 from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
+from app.core.screening_universe import get_screening_universe
 from app.core.stock_universe import get_nse_equities
 
 logger = logging.getLogger(__name__)
 _IST = ZoneInfo("Asia/Kolkata")
 _CACHE_SECONDS = 300
+_FLOW_PERIODS = (1, 2, 5, 10, 20)
 _CACHE_LOCK = threading.Lock()
 _CACHE: Optional[Tuple[float, Dict[str, Any]]] = None
 
@@ -47,11 +48,18 @@ def _score_symbol(symbol: str, names: Dict[str, str]) -> Optional[Dict[str, Any]
         return None
 
     signed_value = close_location * traded_value
-    flow_20_cr = float(signed_value.sum()) / 10_000_000
-    flow_5_cr = float(signed_value.iloc[-5:].sum()) / 10_000_000
-    pressure_20 = float(signed_value.sum() / total_turnover * 100)
-    recent_turnover = float(traded_value.iloc[-5:].sum())
-    pressure_5 = float(signed_value.iloc[-5:].sum() / recent_turnover * 100) if recent_turnover else 0.0
+    periods = {}
+    for sessions in _FLOW_PERIODS:
+        period_flow = float(signed_value.iloc[-sessions:].sum())
+        period_turnover = float(traded_value.iloc[-sessions:].sum())
+        periods[str(sessions)] = {
+            "flow_proxy_cr": round(period_flow / 10_000_000, 2),
+            "pressure_pct": round(period_flow / period_turnover * 100, 1) if period_turnover else 0.0,
+        }
+    flow_20_cr = periods["20"]["flow_proxy_cr"]
+    flow_5_cr = periods["5"]["flow_proxy_cr"]
+    pressure_20 = periods["20"]["pressure_pct"]
+    pressure_5 = periods["5"]["pressure_pct"]
     previous_volumes = frame["Volume"].iloc[-21:-1]
     volume_ratio = float(frame["Volume"].iloc[-1] / previous_volumes.mean()) if len(previous_volumes) and previous_volumes.mean() else 0.0
     last = frame.iloc[-1]
@@ -68,6 +76,7 @@ def _score_symbol(symbol: str, names: Dict[str, str]) -> Optional[Dict[str, Any]
         "pressure_20d_pct": round(pressure_20, 1),
         "flow_proxy_5d_cr": round(flow_5_cr, 2),
         "flow_proxy_20d_cr": round(flow_20_cr, 2),
+        "flow_periods": periods,
         "turnover_20d_cr": round(float(traded_value.sum()) / 10_000_000, 2),
         "average_turnover_daily_cr": round(avg_turnover_cr, 2),
         "volume_ratio_20d": round(volume_ratio, 2),
@@ -75,15 +84,35 @@ def _score_symbol(symbol: str, names: Dict[str, str]) -> Optional[Dict[str, Any]
     }
 
 
-def get_flow_watchlist(limit: int = 10, force_refresh: bool = False) -> Dict[str, Any]:
-    """Return up to `limit` positive and negative flow-proxy ranks."""
+def _rank_results(metadata: Dict[str, Any], results: List[Dict[str, Any]], days: int, limit: int, cached: bool) -> Dict[str, Any]:
+    flow_key = str(days)
+    accumulation = sorted(
+        (row for row in results if row["flow_periods"][flow_key]["flow_proxy_cr"] > 0),
+        key=lambda row: row["flow_periods"][flow_key]["flow_proxy_cr"], reverse=True,
+    )[:limit]
+    distribution = sorted(
+        (row for row in results if row["flow_periods"][flow_key]["flow_proxy_cr"] < 0),
+        key=lambda row: row["flow_periods"][flow_key]["flow_proxy_cr"],
+    )[:limit]
+    return {
+        **metadata,
+        "lookback_sessions": days,
+        "accumulation": accumulation,
+        "distribution": distribution,
+        "cached": cached,
+    }
+
+
+def get_flow_watchlist(limit: int = 10, days: int = 1, force_refresh: bool = False) -> Dict[str, Any]:
+    """Return flow-proxy leaders and laggards over the latest completed sessions."""
     global _CACHE
+    if days not in _FLOW_PERIODS:
+        raise ValueError(f"days must be one of {_FLOW_PERIODS}")
     with _CACHE_LOCK:
         now = clock.monotonic()
         if not force_refresh and _CACHE and now - _CACHE[0] < _CACHE_SECONDS:
-            data = dict(_CACHE[1])
-            data["cached"] = True
-            return {**data, "accumulation": data["accumulation"][:limit], "distribution": data["distribution"][:limit]}
+            cached_data = _CACHE[1]
+            return _rank_results(cached_data["metadata"], cached_data["results"], days, limit, True)
 
         names: Dict[str, str] = {}
         try:
@@ -92,10 +121,11 @@ def get_flow_watchlist(limit: int = 10, force_refresh: bool = False) -> Dict[str
         except Exception:
             logger.info("NSE company names unavailable for flow scan", exc_info=True)
 
+        universe, universe_metadata = get_screening_universe("nifty500")
         results: List[Dict[str, Any]] = []
         failures = 0
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(_score_symbol, symbol, names): symbol for symbol in DEFAULT_UNIVERSE}
+            futures = {executor.submit(_score_symbol, symbol, names): symbol for symbol in universe}
             for future in as_completed(futures):
                 try:
                     row = future.result()
@@ -107,19 +137,16 @@ def get_flow_watchlist(limit: int = 10, force_refresh: bool = False) -> Dict[str
 
         if not results:
             raise MarketDataUnavailable("Flow scan could not load enough daily volume data.")
-        results.sort(key=lambda row: row["flow_proxy_20d_cr"], reverse=True)
-        data = {
+        metadata = {
             "as_of": max(row["as_of"] for row in results),
-            "universe_count": len(DEFAULT_UNIVERSE),
+            "universe_count": len(universe),
+            "universe": "NIFTY 500",
+            "universe_source": universe_metadata.get("source"),
             "scored_count": len(results),
             "failed_count": failures,
             "minimum_average_turnover_daily_cr": 5,
-            "lookback_sessions": 20,
             "source": "Yahoo Finance daily OHLCV; turnover approximated as close × volume",
             "method_note": "Net flow proxy weights each session’s traded value by where it closed within that day’s high-low range. It is not identified institutional buying/selling or official delivery data.",
-            "accumulation": [row for row in results if row["flow_proxy_20d_cr"] > 0][:limit],
-            "distribution": sorted((row for row in results if row["flow_proxy_20d_cr"] < 0), key=lambda row: row["flow_proxy_20d_cr"])[:limit],
-            "cached": False,
         }
-        _CACHE = (clock.monotonic(), data)
-        return data
+        _CACHE = (clock.monotonic(), {"metadata": metadata, "results": results})
+        return _rank_results(metadata, results, days, limit, False)

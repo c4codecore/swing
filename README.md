@@ -12,7 +12,7 @@ In previous iterations, two major problems plagued the system:
 
 ### The New Architecture Solution:
 * **Adaptive Multi-Factor Regime Engine (`backend/app/engine/regime.py`):**
-  Instead of a blunt yes/no check, the engine continuously monitors **Nifty 50 Trend Alignment**, **5-day EMA Slopes**, **Market Breadth (% of stocks > 20 & 50 EMA)**, and **Volatility (ATR & Bollinger Bandwidth)** across 5 distinct cycles:
+  Instead of a blunt yes/no check, the engine continuously monitors **NIFTY 500 Trend Alignment**, **5-day EMA Slopes**, **Market Breadth (% of stocks > 20 & 50 EMA)**, and **Volatility (ATR & Bollinger Bandwidth)** across 5 distinct cycles:
   1. `STRONG_BULL`: Momentum breakouts & trend pullbacks (100% Capital Exposure).
   2. `PULLBACK_BULL`: Healthy dips to 20/50 EMA (75% Capital Exposure).
   3. `SIDEWAYS_CHOPPY`: Volatility Squeezes & Range mean-reversion (50% Capital Exposure).
@@ -68,7 +68,7 @@ MarketVoice/
 
 The `multi_factor` screener option scores long setups using EMA trend structure and slope, relative strength versus Nifty, RSI and ADX, volume participation, a 20-session breakout, distance from the 20-day EMA, benchmark context, and stop/target geometry. The score is a checklist score, **not** a probability of profit.
 
-The **Stock analysis** tab searches NSE's current main-board equity and SME symbol lists by ticker or company name, then shows a selected stock's price chart, technical indicators, company fundamentals, and recent headlines. The exchange symbol list refreshes daily. Its 1-month and 3-month price ranges are historical-volatility scenarios, not reliable predictions or trade recommendations. The screener continues to use the smaller configured liquid-stock universe.
+The **Stock analysis** tab searches NSE's current main-board equity and SME symbol lists by ticker or company name, then shows a selected stock's price chart, technical indicators, company fundamentals, and recent headlines. The exchange symbol list refreshes daily. Its 1-month and 3-month price ranges are historical-volatility scenarios, not reliable predictions or trade recommendations. The **Intraday**, **Swing Trading**, **Buying & selling**, backtest, and stock-options screens use the NIFTY 500 constituent list, then apply their own liquidity, optionability, and data-quality filters. The first scan can take longer; daily market data is cached for follow-up scans.
 
 The **History** tab records each Overview setup once per signal date, symbol, and strategy in PostgreSQL. Open setups are checked against completed daily candles until target 1, stop-loss, or the selected 15- or 30-session time exit. On first database connection, existing history in `backend/data/marketvoice_history.sqlite3` is imported once; the SQLite file is retained as a backup.
 

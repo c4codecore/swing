@@ -3,8 +3,8 @@ Backend Configuration and Constants
 """
 from typing import List
 
-# Default-universe compatibility list. Configure SCREENING_UNIVERSE_MODE below
-# to select NIFTY 50, NIFTY 500, or all NSE cash equities for screeners.
+# Legacy list retained for compatibility with older callers. Active stock scans
+# must use get_screening_universe("nifty500") instead.
 NIFTY50_UNIVERSE: List[str] = [
     "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS",
     "BSE.NS", "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "BEL.NS",
@@ -17,21 +17,25 @@ NIFTY50_UNIVERSE: List[str] = [
     "SBIN.NS", "SUNPHARMA.NS", "TCS.NS", "TATACONSUM.NS", "TMPV.NS",
     "TATASTEEL.NS", "TECHM.NS", "TITAN.NS", "TRENT.NS", "ULTRACEMCO.NS"
 ]
-DEFAULT_UNIVERSE: List[str] = NIFTY50_UNIVERSE
-SCREENING_UNIVERSE_MODE: str = "nifty500"  # nifty50 | nifty500 | nse_equities
-USE_NIFTY50_ONLY: bool = False
+DEFAULT_UNIVERSE: List[str] = NIFTY50_UNIVERSE  # Deprecated; do not use for stock scans.
+SCREENING_UNIVERSE_MODE: str = "nifty500"  # nifty500 | nse_equities (legacy nifty50 redirects to nifty500)
+INTRADAY_SCREENING_UNIVERSE_MODE: str = "nifty500"  # Broader liquid index universe for faster intraday scans.
+USE_NIFTY50_ONLY: bool = False  # Deprecated; screening_universe redirects this to NIFTY 500.
 USE_FULL_NSE_EQUITY_LIST: bool = False
 NIFTY500_CONSTITUENTS_URL: str = "https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv"
 UNIVERSE_CACHE_TTL_SECONDS: int = 24 * 60 * 60
-DAILY_BATCH_SIZE: int = 50
+DAILY_BATCH_SIZE: int = 100
 DAILY_BATCH_RETRIES: int = 3
 DAILY_BATCH_BACKOFF_SECONDS: float = 1.0
-DAILY_BATCH_PAUSE_SECONDS: float = 0.25
+DAILY_BATCH_PAUSE_SECONDS: float = 0.15
 INTRADAY_BATCH_SIZE: int = 50
+MARKET_DATA_CACHE_MAX_ITEMS: int = 8192  # Full NSE screener needs room to retain all daily symbol frames.
 
-BENCHMARK_INDEX: str = "^NSEI"  # Nifty 50 Index
+BENCHMARK_INDEX: str = "^CRSLDX"  # Yahoo Finance symbol for the NIFTY 500 Index.
 CACHE_TTL_SECONDS: int = 300   # 5 minutes cache for market data
+DAILY_DATA_CACHE_TTL_SECONDS: int = 6 * 60 * 60  # Daily context changes slowly; live prices use 5-minute bars.
 INTRADAY_DATA_TTL_SECONDS: int = 180  # Short cache for today's completed 5-minute candles
+INTRADAY_PROFILE_PERIOD: str = "45d"  # Enough sessions for RVOL profiles with less history to download.
 MIN_STOCK_PRICE: float = 50.0
 SWING_MIN_AVG_TRADED_VALUE: float = 50_000_000.0  # ₹5 crore/day
 INTRADAY_MIN_AVG_TRADED_VALUE: float = 100_000_000.0  # ₹10 crore/day

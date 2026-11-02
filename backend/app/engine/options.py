@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import re
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from app.core.iifl_market_data import get_iifl_fo_contracts, get_iifl_market_quotes
+from app.core.screening_universe import get_screening_universe
+from app.core.stock_universe import get_nse_equities
+from app.engine.intraday_screener import run_intraday_screener
 
 
 def _value(row: dict[str, Any], *keys: str) -> Any:
@@ -164,4 +168,105 @@ def build_nifty_options_plan(intraday: dict[str, Any]) -> dict[str, Any]:
             {"side": "SELL", "symbol": short_contract["symbol"], "option_type": option_type, "strike": short_strike, "premium": round(short_premium, 2), "instrument_id": short_contract["instrument_id"]},
         ],
         "reason": "The spread follows the confirmed NIFTY intraday bias. Both legs use the nearest listed expiry and live IIFL premiums.",
+    }
+
+
+def _optionable_nifty500_symbols(master: list[dict[str, Any]], universe: list[str]) -> list[str]:
+    """Intersect NIFTY 500 cash symbols with currently listed NSE stock options."""
+    today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    candidates = {symbol.removesuffix(".NS").upper(): symbol for symbol in universe}
+    by_normalized = {re.sub(r"[^A-Z0-9]", "", symbol): symbol for symbol in candidates}
+    lengths = sorted({len(symbol) for symbol in by_normalized}, reverse=True)
+    optionable: set[str] = set()
+
+    for row in master:
+        option_type = str(_value(row, "optionType", "option_type") or "").upper()
+        if option_type in {"CALL", "C"}:
+            option_type = "CE"
+        elif option_type in {"PUT", "P"}:
+            option_type = "PE"
+        if option_type not in {"CE", "PE"}:
+            continue
+        expiry = _parse_date(_value(row, "expiry", "expiryDate", "contractExpiration", "expirationDate"))
+        strike = _value(row, "strikePrice", "strike_price", "strike")
+        try:
+            if not expiry or expiry <= today or float(strike) <= 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+
+        symbol_fields = (
+            "underlyingSymbol", "underlying", "rootSymbol", "baseSymbol", "symbol", "name",
+            "tradingSymbol", "description", "displayName",
+        )
+        normalized_fields = [
+            re.sub(r"[^A-Z0-9]", "", str(_value(row, key) or "").upper())
+            for key in symbol_fields
+        ]
+        matched_contract = False
+        for normalized in normalized_fields:
+            if not normalized:
+                continue
+            for length in lengths:
+                match = by_normalized.get(normalized[:length])
+                if not match:
+                    continue
+                next_character = normalized[length:length + 1]
+                if not next_character or not next_character.isalpha():
+                    optionable.add(candidates[match])
+                    matched_contract = True
+                    break
+            if matched_contract:
+                break
+
+    return sorted(optionable)
+
+
+def build_options_stock_screen(force_refresh: bool = False) -> dict[str, Any]:
+    """Find NIFTY 500 optionable shares with a completed-candle intraday setup."""
+    contracts = get_iifl_fo_contracts()
+    universe, universe_info = get_screening_universe("nifty500")
+    symbols = _optionable_nifty500_symbols(contracts, universe)
+    if not symbols:
+        return {
+            "status": "UNAVAILABLE", "count": 0, "signals": [], "universe_count": 0,
+            "reason": "Could not match any currently listed NSE stock-option contracts to the NIFTY 500 list.",
+            "universe_source": universe_info.get("source"), "cached": False,
+        }
+
+    scan = run_intraday_screener(symbols=symbols, force_refresh=force_refresh)
+    company_names = {}
+    try:
+        stocks, _ = get_nse_equities()
+        company_names = {stock["symbol"].upper(): stock["name"] for stock in stocks}
+    except Exception:
+        pass
+
+    signals = []
+    for signal in scan.get("signals", []):
+        direction = signal.get("direction")
+        if direction not in {"BULLISH", "BEARISH"}:
+            continue
+        symbol = str(signal.get("symbol") or "").upper()
+        signals.append({
+            **signal,
+            "company_name": company_names.get(symbol, symbol),
+            "options_structure": "Bull call debit spread" if direction == "BULLISH" else "Bear put debit spread",
+        })
+
+    summary = scan.get("scan_summary") or {}
+    return {
+        "status": "READY" if signals else "NO_SETUPS",
+        "count": len(signals),
+        "signals": signals,
+        "universe_count": len(symbols),
+        "scanned_count": summary.get("succeeded", 0),
+        "strategy_distribution": scan.get("strategy_distribution", {}),
+        "strategies_available": scan.get("strategies_available", []),
+        "timestamp": scan.get("timestamp"),
+        "as_of": max((signal.get("last_candle_at", "") for signal in signals), default=None),
+        "cached": bool(scan.get("cached")),
+        "universe_source": universe_info.get("source"),
+        "disclaimer": "Underlying-stock setups only. Option premiums, Greeks, expiry-specific prices, and payoff are not calculated here. No orders are placed.",
+        "reason": None if signals else "No current completed-candle setup passed the optionable-stock filters. Try Refresh after fresh market data is available.",
     }

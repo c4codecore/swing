@@ -5,9 +5,9 @@ import math
 
 import pandas as pd
 
-from app.core.config import DEFAULT_UNIVERSE
 from app.core.data_fetcher import MarketDataUnavailable, fetch_benchmark, fetch_ohlcv
 from app.core.indicators import ema
+from app.core.screening_universe import get_screening_universe
 from app.engine.strategies import STRATEGY_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,8 @@ def run_strategy_backtest(strategy_name: str, symbols: Optional[List[str]] = Non
         raise ValueError("Capital and max_open_positions are outside supported limits.")
 
     strategy = STRATEGY_REGISTRY[strategy_name]
-    test_symbols = list(dict.fromkeys(symbols or DEFAULT_UNIVERSE))[:50]
+    default_symbols, _ = get_screening_universe("nifty500")
+    test_symbols = list(dict.fromkeys(symbols or default_symbols))
     bench_df = fetch_benchmark(period=period)
     bench_close = bench_df["Close"]
     bench_ema50 = ema(bench_close, 50)

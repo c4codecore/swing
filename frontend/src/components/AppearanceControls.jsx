@@ -10,7 +10,7 @@ export default function AppearanceControls({ theme, setTheme, dim, setDim, grays
       <label className="setting-field">
         <span>Theme</span>
         <select value={theme} onChange={event => setTheme(event.target.value)}>
-          <option value="codecore">Colored Theme</option>
+          <option value="codecore">Dark colour · high contrast</option>
           <option value="dark">Grayscale High-Contrast Dark</option>
           <option value="light">Light high-contrast</option>
           <option value="auto">Auto</option>
@@ -26,8 +26,10 @@ export default function AppearanceControls({ theme, setTheme, dim, setDim, grays
       <button type="button" className={`setting-button ${grayscale ? 'setting-active' : ''}`} aria-pressed={grayscale} onClick={() => setGrayscale(!grayscale)}>
         <Eye size={18} aria-hidden="true" /><span>Grayscale preview {grayscale ? 'on' : 'off'}</span>
       </button>
+      <p className="setting-hint">Market signals use labels and symbols alongside colour.</p>
       <button type="button" className={`setting-button ${motion ? 'setting-active' : ''}`} aria-pressed={motion} onClick={() => setMotion(!motion)}>
         <Sparkles size={18} aria-hidden="true" /><span>Decorative motion {motion ? 'on' : 'off'}</span>
       </button>
+      <p className="setting-hint">Adds gentle page, card and logo animations. Your device’s reduced-motion setting always takes priority.</p>
   </div>;
 }

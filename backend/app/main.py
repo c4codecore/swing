@@ -31,17 +31,18 @@ def _load_local_env(path: Path) -> None:
 
 _load_local_env(Path(__file__).resolve().parents[1] / ".env")
 
-from app.core.config import BENCHMARK_INDEX, DEFAULT_UNIVERSE
+from app.core.config import BENCHMARK_INDEX
 from app.core.data_fetcher import MarketDataUnavailable, fetch_ohlcv
 from app.core.indicators import ema, rsi
 from app.core.stock_research import get_stock_research
 from app.core.stock_universe import get_nse_equities, is_supported_nse_equity
 from app.core.signal_history import capture_signals, get_signal_history
+from app.core.market_signal_history import capture_market_signals, get_market_signal_history
 from app.core.portfolio_storage import get_manual_holdings, replace_manual_holdings
 from app.engine.regime import analyze_market_regime
 from app.engine.intraday import analyze_intraday
 from app.engine.intraday_screener import run_intraday_screener
-from app.engine.options import build_nifty_options_plan
+from app.engine.options import build_nifty_options_plan, build_options_stock_screen
 from app.engine.strategies import STRATEGY_REGISTRY
 from app.engine.screener import screener_engine
 from app.engine.institutional_flow import get_flow_watchlist
@@ -162,15 +163,21 @@ def intraday_stock_screener(
     try:
         valid_strategies = {
             "vwap_opening_drive", "orb_prebreakout", "momentum_ignition",
-            "mean_reversion", "rs_surge",
+            "mean_reversion", "rs_surge", "opening_range_breakout",
+            "vwap_reclaim", "trend_pullback",
         }
         strat_filter = strategy if isinstance(strategy, str) and strategy.strip() else None
         if strat_filter and strat_filter not in valid_strategies:
             raise HTTPException(status_code=422, detail=f"Unknown intraday strategy. Available: {', '.join(sorted(valid_strategies))}")
-        return run_intraday_screener(
+        result = run_intraday_screener(
             strategy_filter=strat_filter,
             force_refresh=bool(force_refresh),
         )
+        try:
+            capture_market_signals("intraday", result.get("signals", []))
+        except Exception:
+            logger.exception("Unable to save intraday signals to history")
+        return result
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except HTTPException:
@@ -187,7 +194,17 @@ def options_analysis():
     """Build a live-premium NIFTY debit-spread scenario from an intraday bias."""
     try:
         intraday = analyze_intraday()
-        return build_nifty_options_plan(intraday)
+        plan = build_nifty_options_plan(intraday)
+        try:
+            capture_market_signals("options", [{
+                **plan,
+                "signal_date": datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat(),
+                "strategy": "nifty_options_spread",
+                "strategy_title": plan.get("strategy") or "NIFTY options spread",
+            }])
+        except Exception:
+            logger.exception("Unable to save options plan to history")
+        return plan
     except IIFLSessionRequired as exc:
         raise HTTPException(status_code=401, detail=str(exc))
     except IIFLQuoteUnavailable as exc:
@@ -195,6 +212,20 @@ def options_analysis():
     except Exception:
         logger.exception("Options analysis failed")
         raise HTTPException(status_code=502, detail="IIFL options analysis could not be calculated.")
+
+
+@app.get("/api/options/stocks")
+def options_stock_screen(force_refresh: bool = Query(False)):
+    """Screen optionable NIFTY 500 shares for intraday strategy setups."""
+    try:
+        return build_options_stock_screen(force_refresh=force_refresh)
+    except IIFLSessionRequired as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except IIFLQuoteUnavailable as exc:
+        raise HTTPException(status_code=502, detail=_iifl_error_detail(exc))
+    except Exception:
+        logger.exception("F&O stock setup scan failed")
+        raise HTTPException(status_code=502, detail="F&O stock setups could not be loaded.")
 
 
 def _analyze_portfolio_holding(holding: dict) -> dict:
@@ -413,11 +444,14 @@ def run_screener(
 @app.get("/api/flow-watchlist")
 def read_flow_watchlist(
     limit: int = Query(10, ge=10, le=20, description="Number of leaders and laggards to return per side"),
+    days: int = Query(1, ge=1, le=20, description="Completed market sessions used to rank buying and selling pressure"),
     refresh: bool = False,
 ):
     """Rank the liquid watch universe by daily OHLCV accumulation/distribution proxy."""
+    if days not in (1, 2, 5, 10, 20):
+        raise HTTPException(status_code=422, detail="days must be 1, 2, 5, 10, or 20")
     try:
-        return get_flow_watchlist(limit=limit, force_refresh=refresh)
+        return get_flow_watchlist(limit=limit, days=days, force_refresh=refresh)
     except Exception as exc:
         logger.exception("Unable to build the volume flow watchlist")
         raise HTTPException(status_code=503, detail="Volume flow scan is unavailable. Try again when daily market data is available.") from exc
@@ -444,7 +478,9 @@ def capture_signal_history(req: SignalHistoryCaptureRequest):
 def read_signal_history():
     """Refresh open setups using completed daily candles and return date-sorted outcomes."""
     try:
-        return get_signal_history()
+        history = get_signal_history()
+        history["market_records"] = get_market_signal_history()
+        return history
     except Exception:
         logger.exception("Unable to load signal history")
         raise HTTPException(status_code=500, detail="Unable to load signal history.")

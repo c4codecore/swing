@@ -199,9 +199,9 @@ Weights are configurable risk-scaling defaults, not tested optimum values; Phase
 Inputs/windows and thresholds are in `backend/app/core/config.py`: EMA20/50/200, 20/50-day return lookbacks, RSI14, Bollinger period/multiplier plus 20-day width mean/std, 50 EMA slope lookback, and breadth thresholds. Breadth uses the configured, Phase 2 swing-liquidity-filtered, non-SME universe. It is unavailable below 200 valid symbols; then no breadth percentage is inferred and classification uses benchmark-only rules with a visible warning and the sample size. The response includes the rule match, whether the raw classification used a defined rule or catch-all, and the number of catch-all days among its last 30 history rows.
 
 ### Screening Universe and Fetching
-`DEFAULT_UNIVERSE` in `backend/app/core/config.py` was the original hardcoded 50-symbol list (it contained 51 entries). Swing and intraday screeners now use `SCREENING_UNIVERSE_MODE`, default `nifty500`, with choices `nifty50`, `nifty500`, and `nse_equities`. Set `USE_NIFTY50_ONLY=True` to return to the current exact 50 constituents or `USE_FULL_NSE_EQUITY_LIST=True` to scan the full cash-equity listing; set at most one override. NIFTY 500 constituents are downloaded from NSE Indices' `ind_nifty500list.csv`, cached locally for 24 hours, and fall back to `backend/data/ind_nifty500list.csv` (the bundled official constituent CSV) when refresh fails. The full NSE mode uses the existing 24-hour NSE equity listing source; every selected symbol still passes through the Phase 2 tradability filter.
+`DEFAULT_UNIVERSE` in `backend/app/core/config.py` is a compatibility list. Swing and breadth use `SCREENING_UNIVERSE_MODE`, default `nifty500`, with choices `nifty50`, `nifty500`, and `nse_equities`. Intraday uses its own `INTRADAY_SCREENING_UNIVERSE_MODE`, currently `nifty500`, to scan NIFTY 500 constituents before the intraday tradability filter. Daily market-data cache capacity is configured by `MARKET_DATA_CACHE_MAX_ITEMS` to retain universe frames across rescans.
 
-Daily history is retrieved through sequential, paced multi-symbol Yahoo downloads in configurable batches (`DAILY_BATCH_SIZE`, retry count, exponential backoff, and inter-batch pause) and cached per symbol by the existing thread-safe cache. Each run returns a failed-symbol list and elapsed time. Intraday 5-minute data is fetched only after daily liquidity/tradability filtering, in a batched request for surviving candidates plus NIFTY.
+Daily history is retrieved through sequential, paced multi-symbol Yahoo downloads in configurable batches (`DAILY_BATCH_SIZE`, retry count, exponential backoff, and inter-batch pause) and cached per symbol by the existing thread-safe cache. The intraday screener reuses daily context for 6 hours; current price and VWAP still use completed 5-minute candles. Intraday 5-minute data is fetched only after daily liquidity/tradability filtering, in batched requests for surviving candidates plus NIFTY.
 
 If `regime_history` is empty, the regime API bootstraps it by replaying the last 60 completed NIFTY daily bars through the same classifier and hysteresis state machine. The early-recovery case remains `SIDEWAYS_CHOPPY` until the bull structure is established; this avoids using the larger `PULLBACK_BULL` risk weight without evidence.
 
@@ -250,7 +250,7 @@ Both swing and intraday screeners apply `filter_tradable_symbols()` to daily OHL
 - Staleness counts weekdays because the data feed does not provide an exchange holiday calendar; a market holiday may therefore be counted as a trading day in this age estimate.
 
 ### 4.3 World-Class Intraday Stock Screener (`backend/app/engine/intraday_screener.py`)
-Designed to solve the problem of missing intraday opportunities. Uses daily-bar context and completed 5-minute session bars. Daily bars provide EMA/ATR/resistance/average-volume context; 5-minute bars provide current-session price, VWAP, RSI, high/low and cumulative volume. The screener first applies the shared intraday tradability filter, then batch-downloads 5-minute data for survivors plus NIFTY using `yf.download` (up to 60 calendar days, within Yahoo's 5-minute history limit).
+Designed to solve the problem of missing intraday opportunities. Uses daily-bar context and completed 5-minute session bars. Daily bars provide EMA/ATR/resistance/average-volume context; 5-minute bars provide current-session price, VWAP, RSI, high/low and cumulative volume. The screener first applies the shared intraday tradability filter, then batch-downloads 45 calendar days of 5-minute data for survivors plus NIFTY (`INTRADAY_PROFILE_PERIOD`), enough history for its session-volume profile while keeping the download smaller.
 
 #### The Core Problem & The Session-Aware RVOL Innovation
 - **Traditional Screener Flaw:** Conventional screeners check `Current Volume >= 1.5 * 20-day Volume Average`. During the first 1-3 hours of trading (09:15 to 12:00), cumulative volume is naturally lower than a full 6.25-hour day. Consequently, screeners find 0 stocks until 14:30.
@@ -258,7 +258,7 @@ Designed to solve the problem of missing intraday opportunities. Uses daily-bar 
 - Only completed 5-minute candles are evaluated: Yahoo candle timestamps are treated as interval starts, and a bar is included only after its five-minute interval has ended. Signals expose `last_candle_at`, `data_delay_seconds`, and `stale`; the UI shows the candle time and delay.
 - `INTRADAY_DATA_TTL_SECONDS` defaults to 180. Tradability thresholds and data-quality rules come from the shared filter configuration above.
 
-#### The 5 Intraday Setups:
+#### The 8 Intraday Setups:
 1. **Gap + Volume Opening Drive (`vwap_opening_drive`):**
    - Gap at open between $+0.75\%$ and $+4.0\%$.
    - Current price > Opening price and Current price > VWAP.
@@ -280,6 +280,9 @@ Designed to solve the problem of missing intraday opportunities. Uses daily-bar 
    - Calculates 1-day alpha: $\alpha = \text{Stock \% Change} - \text{NIFTY 50 \% Change}$.
    - Triggers when $\alpha \ge +1.75\%$ with Session RVOL $\ge 1.3\times$.
    - Captures stocks displaying institutional accumulation regardless of broader market fluctuations.
+6. **15-Min Opening Range Breakout (`opening_range_breakout`):** A completed move above/below the first 15-minute range, confirmed by VWAP, session RVOL, and RSI.
+7. **VWAP Reclaim / Breakdown (`vwap_reclaim`):** A completed 5-minute close crosses session VWAP with volume and RSI confirmation.
+8. **Trend Pullback Bounce (`trend_pullback`):** Daily EMA20 above EMA50, with a 5-minute recovery near VWAP and volume participation.
 
 ---
 
@@ -415,7 +418,7 @@ All endpoints are hosted at `http://localhost:8001` (or local network IP).
 - `GET /api/regime`: Confirmed/raw regime, pending hysteresis, configurable metrics, filtered breadth/sample warning, sizing weight, strategy gating lists, and 30-row persisted history.
 - `GET /api/strategies`: Lists registered swing strategies and their optimal regime environments.
 - `GET /api/screener/run?force_refresh=false&strategy={id}`: Runs swing scanner across NSE stocks and includes `filter_rejections` counts.
-- `GET /api/intraday/screener?strategy={id}&force_refresh=false`: Runs real-time intraday screener with 5 strategies and includes `filter_rejections` counts.
+- `GET /api/intraday/screener?strategy={id}&force_refresh=false`: Runs the NIFTY 500 intraday screener with 8 strategies and includes universe metadata and `filter_rejections` counts.
 
 ### Live IIFL Broker Integration
 - `GET /api/market/live/status`: Returns current IIFL connection status (configured, logged in, session expiry).
